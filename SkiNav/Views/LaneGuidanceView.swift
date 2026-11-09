@@ -4,6 +4,7 @@ import SwiftUI
 /// Lane arrows under the turn banner. The lanes you should be in are bright.
 struct LaneGuidanceView: View {
     var lanes: [LaneInfo]
+    var cell: CGFloat = 40
 
     var body: some View {
         HStack(spacing: 0) {
@@ -11,9 +12,9 @@ struct LaneGuidanceView: View {
                 if index > 0 {
                     LaneDivider()
                         .stroke(Color.white.opacity(0.35), style: StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
-                        .frame(width: 2, height: 34)
+                        .frame(width: 2, height: cell * 0.85)
                 }
-                LaneCell(lane: lane)
+                LaneCell(lane: lane, size: cell)
             }
         }
         .padding(.horizontal, 10)
@@ -53,6 +54,7 @@ private struct LaneDivider: Shape {
 
 private struct LaneCell: View {
     var lane: LaneInfo
+    var size: CGFloat = 40
 
     var body: some View {
         let directions = lane.directions.isEmpty ? ["straight"] : lane.directions
@@ -69,14 +71,14 @@ private struct LaneCell: View {
                         Image(systemName: LaneGuidanceView.symbol(for: d))
                     }
                 }
-                .font(.system(size: 20, weight: .bold))
+                .font(.system(size: size * 0.5, weight: .bold))
                 .foregroundStyle(.white.opacity(0.35))
             } else {
                 Image(systemName: LaneGuidanceView.symbol(for: main))
-                    .font(.system(size: 22, weight: .heavy))
+                    .font(.system(size: size * 0.55, weight: .heavy))
                     .foregroundStyle(lane.active ? Color.white : Color.white.opacity(0.35))
             }
         }
-        .frame(width: 40, height: 40)
+        .frame(width: size, height: size)
     }
 }

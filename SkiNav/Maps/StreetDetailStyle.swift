@@ -175,7 +175,7 @@ enum StreetDetailStyle {
     static func apply(to style: inout [String: Any], detailURL: String?, dark: Bool, buildings: Bool) {
         guard var layers = style["layers"] as? [[String: Any]] else { return }
         // Everything goes under the labels.
-        let labelsAt = layers.firstIndex { ($0["type"] as? String) == "symbol" } ?? layers.count
+        let labelsAt = StyleTweaks.overlayIndex(layers)
         var insert: [[String: Any]] = []
         if let detailURL {
             var sources = style["sources"] as? [String: Any] ?? [:]

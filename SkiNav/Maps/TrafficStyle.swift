@@ -70,13 +70,13 @@ enum TrafficStyle {
                                16, ["case", oneSide, 4.5, 0],
                                19, ["case", oneSide, 9, 0]]
 
-            let labelsAt = layers.firstIndex { ($0["type"] as? String) == "symbol" } ?? layers.count
+            let labelsAt = StyleTweaks.overlayIndex(layers)
             layers.insert(contentsOf: [
                 [
                     "id": "ski-traffic-casing", "type": "line", "source": "ski-traffic",
                     "source-layer": "Traffic flow", "filter": filter,
                     "layout": ["line-cap": "round", "line-join": "round"],
-                    "paint": ["line-color": dark ? "#000000" : "#ffffff", "line-opacity": 0.55,
+                    "paint": ["line-color": dark ? "#1e2229" : "#ffffff", "line-opacity": dark ? 0.35 : 0.55,
                               "line-width": ["interpolate", ["linear"], ["zoom"], 9, 2.5, 13, 4.5, 16, 7.5, 19, 12],
                               "line-offset": offset],
                 ],

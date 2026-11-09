@@ -173,35 +173,33 @@ struct MapScreen: View {
         .navigationViewInnerGrid(
             topCenter: {
                 if navigating {
-                    VStack(spacing: 8) {
-                        if let junction {
-                            JunctionView(info: junction, useMiles: model.settings.useMiles)
-                                .transition(.move(edge: .top).combined(with: .opacity))
-                        } else if let lanes, !lanes.isEmpty {
-                            LaneGuidanceView(lanes: lanes)
+                    VStack(spacing: 6) {
+                        if junction == nil, let lanes, !lanes.isEmpty {
+                            ViewThatFits(in: .horizontal) {
+                                LaneGuidanceView(lanes: lanes, cell: 40)
+                                LaneGuidanceView(lanes: lanes, cell: 30)
+                                LaneGuidanceView(lanes: lanes, cell: 22)
+                            }
                         }
                         if let traffic = model.navTraffic, traffic.isNoticeable {
-                            HStack(spacing: 8) {
-                                Image(systemName: "car.2.fill")
-                                    .foregroundStyle(.white)
-                                    .frame(width: 30, height: 30)
-                                    .background(traffic.isHeavy ? Color.red : Color.orange, in: Circle())
-                                Text(traffic.isHeavy ? "Heavy traffic ahead" : "Traffic ahead")
-                                    .font(.subheadline.weight(.bold))
-                                Text("+\(Fmt.duration(traffic.delay)) · arrive \(Fmt.arrival(after: traffic.travelTime))")
-                                    .font(.caption.weight(.semibold).monospacedDigit())
-                                    .foregroundStyle(.secondary)
-                                Spacer(minLength: 0)
-                            }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 7)
-                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            CompactBanner(
+                                symbol: "car.2.fill",
+                                tint: traffic.isHeavy ? .red : .orange,
+                                title: "Traffic +\(Fmt.duration(traffic.delay))",
+                                subtitle: "Arrive \(Fmt.arrival(after: traffic.travelTime))"
+                            )
                         }
                         if let alert = model.upcomingAlert {
-                            AlertBanner(alert: alert, distance: model.upcomingAlertDistance, miles: model.settings.useMiles)
+                            CompactBanner(
+                                symbol: alert.isCamera ? "camera.fill" : "train.side.front.car",
+                                tint: alert.isCamera ? .orange : .yellow,
+                                glyph: alert.isCamera ? .white : .black,
+                                title: alert.isCamera ? "Speed camera" : "Rail crossing",
+                                subtitle: Fmt.distance(model.upcomingAlertDistance, miles: model.settings.useMiles)
+                            )
                         }
                     }
-                    .animation(.snappy, value: junction?.signText)
+                    .frame(maxWidth: .infinity)
                     if model.arrived {
                         NavigationUIBanner(severity: .info) {
                             Text("You’ve arrived\(model.destination.map { " at \($0.name)" } ?? "")")
@@ -229,6 +227,16 @@ struct MapScreen: View {
                 }
             }
         )
+        .overlay(alignment: .top) {
+            if let junction {
+                JunctionView(info: junction, useMiles: model.settings.useMiles)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 84) // just below the turn banner
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .allowsHitTesting(false)
+            }
+        }
+        .animation(.snappy, value: junction?.signText)
         .onLongPressMapGesture { context in
             if context.state == .began {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -315,5 +323,43 @@ struct AlertBanner: View {
         .padding(.vertical, 8)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .shadow(color: .black.opacity(0.2), radius: 6, y: 2)
+    }
+}
+
+/// A small two-line notice that fits beside the map buttons:
+/// [icon] Traffic +4 min
+///        Arrive 6:35 PM
+struct CompactBanner: View {
+    var symbol: String
+    var tint: Color
+    var glyph: Color = .white
+    var title: String
+    var subtitle: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(glyph)
+                .frame(width: 28, height: 28)
+                .background(tint, in: Circle())
+            VStack(alignment: .leading, spacing: 0) {
+                Text(title)
+                    .font(.footnote.weight(.bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Text(subtitle)
+                    .font(.caption2.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .frame(maxWidth: 220, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .shadow(color: .black.opacity(0.25), radius: 5, y: 2)
     }
 }

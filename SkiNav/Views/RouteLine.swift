@@ -45,7 +45,7 @@ struct RouteLine: StyleLayerCollection {
                            stops: NSExpression(forConstantValue: [
                                10: 6 * scale, 13: 10 * scale, 15: 16 * scale, 17: 28 * scale, 19: 52 * scale, 21: 90 * scale,
                            ]))
-                .renderBelow(.symbols),
+                .renderBelow(.layer(layerId: StyleTweaks.anchorID)),
             LineStyleLayer(identifier: "\(identifier)-fill", source: source)
                 .lineCap(.round)
                 .lineJoin(.round)
@@ -56,7 +56,7 @@ struct RouteLine: StyleLayerCollection {
                            stops: NSExpression(forConstantValue: [
                                10: 4 * scale, 13: 7 * scale, 15: 12 * scale, 17: 22 * scale, 19: 44 * scale, 21: 78 * scale,
                            ]))
-                .renderBelow(.symbols),
+                .renderBelow(.layer(layerId: StyleTweaks.anchorID)),
         ]
     }
 }

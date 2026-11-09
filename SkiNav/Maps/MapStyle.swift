@@ -23,7 +23,7 @@ enum MapStyle {
         let buildings = settings.buildings3D && pack != nil
 
         let cacheKey = [
-            pack.map { "\($0.id)-\($0.version)" } ?? "online", flavor,
+            pack.map { "\($0.id)-\($0.version)" } ?? "online", flavor, "v3",
             detail != nil ? "d" : "", buildings ? "b" : "", traffic ? "t" : "", satellite ? "s" : "",
             String(key.utf8.reduce(UInt32(5381)) { ($0 &* 33) &+ UInt32($1) } % 100_000),
         ].joined(separator: "-")
@@ -32,23 +32,25 @@ enum MapStyle {
         let fallback = dark ? onlineDark : onlineLight
         guard var text = template(pack: pack, flavor: flavor, store: store) else { return fallback }
 
-        if detail != nil || buildings || traffic || satellite,
-           let data = text.data(using: .utf8),
+        if let data = text.data(using: .utf8),
            var json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         {
+            if pack == nil, dark {
+                StyleTweaks.nightOnline(&json) // offline styles already use the night palette
+            }
             if detail != nil || buildings {
                 StreetDetailStyle.apply(to: &json, detailURL: detail.map(trimmed), dark: dark, buildings: buildings)
             }
             if traffic || satellite {
                 TrafficStyle.apply(to: &json, key: key, traffic: traffic, satellite: satellite, dark: dark)
             }
+            // Last, so the route line (drawn just under this) sits above traffic and roads.
+            StyleTweaks.addAnchor(&json)
             if let out = try? JSONSerialization.data(withJSONObject: json),
                let s = String(data: out, encoding: .utf8)
             {
                 text = s
             }
-        } else if pack == nil {
-            return fallback // plain online style: just load it by URL
         }
 
         let out = store.mapsDir.appendingPathComponent("style-\(cacheKey).json")
