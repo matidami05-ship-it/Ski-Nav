@@ -45,6 +45,14 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Toggle("Save parking spot automatically", isOn: $settings.autoSaveParking)
+                } header: {
+                    Text("Parking")
+                } footer: {
+                    Text("Saves where your car is when you arrive at a destination or unplug from CarPlay. You can also tap Park Here anytime.")
+                }
+
+                Section {
                     Toggle("Street view on places", isOn: $settings.streetView)
                 } footer: {
                     Text("Apple Look Around imagery. Needs a connection.")

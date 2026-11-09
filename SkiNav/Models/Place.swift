@@ -64,8 +64,9 @@ struct Place: Identifiable, Hashable, Codable {
         if c.contains("bar") || c.contains("pub") { return "wineglass.fill" }
         if c.contains("hotel") || c.contains("motel") { return "bed.double.fill" }
         if c.contains("hospital") || c.contains("clinic") || c.contains("pharmacy") { return "cross.case.fill" }
-        if c.contains("park") { return "tree.fill" }
+        if id == "parked-car" { return "car.fill" }
         if c.contains("parking") { return "parkingsign" }
+        if c.contains("park") { return "tree.fill" }
         if c.contains("school") || c.contains("college") || c.contains("university") { return "graduationcap.fill" }
         if c.contains("supermarket") || c.contains("grocery") || c.contains("shop") || c.contains("store") { return "cart.fill" }
         if c.contains("street") { return "road.lanes" }

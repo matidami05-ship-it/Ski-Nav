@@ -62,6 +62,10 @@ final class CarPlaySceneDelegate: NSObject, CPTemplateApplicationSceneDelegate {
         from window: CPWindow
     ) {
         MainActor.assumeIsolated {
+            // Leaving the car: remember where it's parked.
+            if AppSettings.shared.autoSaveParking {
+                AppModel.shared.saveParking()
+            }
             car?.disconnect()
             car = nil
             window.isHidden = true

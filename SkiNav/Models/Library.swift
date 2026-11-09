@@ -1,5 +1,24 @@
+import CoreLocation
 import Foundation
 import Observation
+
+/// Where the car was left.
+struct ParkedCar: Codable, Hashable {
+    var latitude: Double
+    var longitude: Double
+    var date: Date
+    var note: String?
+    var address: String?
+
+    var coordinate: CLLocationCoordinate2D { CLLocationCoordinate2D(latitude: latitude, longitude: longitude) }
+
+    var place: Place {
+        var parts: [String] = ["Parked \(date.formatted(.relative(presentation: .named)))"]
+        if let address, !address.isEmpty { parts.append(address) }
+        return Place(id: "parked-car", name: "Parked Car", subtitle: parts.joined(separator: " · "),
+                     coordinate: coordinate, category: "parking")
+    }
+}
 
 /// Home, Work, saved places and recent destinations, kept on the phone.
 @MainActor
@@ -11,6 +30,7 @@ final class Library {
     private(set) var work: Place?
     private(set) var saved: [Place] = []
     private(set) var recents: [Place] = []
+    private(set) var parkedCar: ParkedCar?
 
     private let url: URL = {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -23,6 +43,7 @@ final class Library {
         var work: Place?
         var saved: [Place]
         var recents: [Place]
+        var parkedCar: ParkedCar?
     }
 
     private init() {
@@ -33,6 +54,7 @@ final class Library {
             work = stored.work
             saved = stored.saved
             recents = stored.recents
+            parkedCar = stored.parkedCar
         }
     }
 
@@ -76,6 +98,27 @@ final class Library {
         save()
     }
 
+    func setParkedCar(at coordinate: CLLocationCoordinate2D, note: String?) {
+        parkedCar = ParkedCar(latitude: coordinate.latitude, longitude: coordinate.longitude,
+                              date: Date(), note: note, address: nil)
+        save()
+    }
+
+    func updateParkedAddress(_ address: String) {
+        parkedCar?.address = address
+        save()
+    }
+
+    func updateParkedNote(_ note: String) {
+        parkedCar?.note = note.isEmpty ? nil : note
+        save()
+    }
+
+    func clearParkedCar() {
+        parkedCar = nil
+        save()
+    }
+
     private func renamed(_ place: Place, _ label: String) -> Place {
         var p = place
         if p.subtitle.isEmpty || p.id.hasPrefix("pin-") {
@@ -89,7 +132,7 @@ final class Library {
     }
 
     private func save() {
-        let stored = Stored(home: home, work: work, saved: saved, recents: recents)
+        let stored = Stored(home: home, work: work, saved: saved, recents: recents, parkedCar: parkedCar)
         if let data = try? JSONEncoder().encode(stored) {
             try? data.write(to: url, options: .atomic)
         }

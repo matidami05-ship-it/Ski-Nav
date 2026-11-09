@@ -27,6 +27,15 @@ struct BrowsePanel: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
+                    if let car = model.library.parkedCar {
+                        ShortcutChip(title: "Parked Car", subtitle: eta(car.place), systemImage: "car.fill", tint: .teal) {
+                            model.select(car.place)
+                        }
+                    } else {
+                        ShortcutChip(title: "Park Here", subtitle: "Save spot", systemImage: "parkingsign", tint: .teal) {
+                            model.saveParking()
+                        }
+                    }
                     ShortcutChip(title: "Home", subtitle: model.library.home == nil ? "Add" : eta(model.library.home),
                                  systemImage: "house.fill", tint: .blue) {
                         if let home = model.library.home { model.drive(to: home) } else { openSearch() }
@@ -142,7 +151,7 @@ struct PlaceCard: View {
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(width: 40, height: 40)
-                    .background(Color.red.gradient, in: Circle())
+                    .background((place.id == "parked-car" ? Color.teal : Color.red).gradient, in: Circle())
                 VStack(alignment: .leading, spacing: 3) {
                     Text(place.name)
                         .font(.title3.weight(.bold))
@@ -158,15 +167,79 @@ struct PlaceCard: View {
                 CloseButton { model.closePlace() }
             }
 
+            if place.id == "parked-car", let note = model.library.parkedCar?.note {
+                Label(note, systemImage: "note.text")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
             if model.settings.streetView {
                 LookAroundSection(coordinate: place.coordinate)
             }
 
+            if place.id == "parked-car" {
+                parkedButtons
+            } else {
+                placeButtons
+            }
+        }
+        .alert("Parking note", isPresented: $editingNote) {
+            TextField("Level 3, row B", text: $noteText)
+            Button("Save") { model.library.updateParkedNote(noteText) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("A reminder of where you parked.")
+        }
+    }
+
+    @State private var editingNote = false
+    @State private var noteText = ""
+
+    private var parkedButtons: some View {
+        HStack(spacing: 10) {
+            Button {
+                model.walkToCar()
+            } label: {
+                Label("Walk Here", systemImage: "figure.walk")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 50)
+            }
+            .buttonStyle(.borderedProminent)
+            .buttonBorderShape(.roundedRectangle(radius: 14))
+            .tint(.teal)
+
+            Button {
+                noteText = model.library.parkedCar?.note ?? ""
+                editingNote = true
+            } label: {
+                Image(systemName: "square.and.pencil")
+                    .font(.headline)
+                    .frame(width: 50, height: 50)
+            }
+            .buttonStyle(.bordered)
+            .buttonBorderShape(.roundedRectangle(radius: 14))
+
+            Button(role: .destructive) {
+                model.library.clearParkedCar()
+                model.closePlace()
+            } label: {
+                Image(systemName: "trash")
+                    .font(.headline)
+                    .frame(width: 50, height: 50)
+            }
+            .buttonStyle(.bordered)
+            .buttonBorderShape(.roundedRectangle(radius: 14))
+        }
+    }
+
+    private var placeButtons: some View {
             HStack(spacing: 10) {
                 Button {
                     model.drive(to: place)
                 } label: {
-                    Label("Directions", systemImage: "arrow.triangle.turn.up.right.diamond.fill")
+                    Label(model.isWalking ? "Walk" : "Directions",
+                          systemImage: model.isWalking ? "figure.walk" : "arrow.triangle.turn.up.right.diamond.fill")
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .frame(height: 50)
@@ -188,6 +261,10 @@ struct PlaceCard: View {
                 Menu {
                     Button("Set as Home", systemImage: "house") { model.library.setHome(place) }
                     Button("Set as Work", systemImage: "briefcase") { model.library.setWork(place) }
+                    Button("Save as Parking Spot", systemImage: "parkingsign") {
+                        model.saveParking(at: place.coordinate)
+                        model.select(model.library.parkedCar?.place ?? place)
+                    }
                     Button("Copy Coordinates", systemImage: "doc.on.doc") {
                         UIPasteboard.general.string = String(format: "%.6f, %.6f", place.latitude, place.longitude)
                     }
@@ -199,7 +276,6 @@ struct PlaceCard: View {
                 .buttonStyle(.bordered)
                 .buttonBorderShape(.roundedRectangle(radius: 14))
             }
-        }
     }
 
     private var detail: String {
@@ -257,10 +333,22 @@ struct RoutesPanel: View {
                 }
             }
 
+            Picker("Travel mode", selection: Binding(
+                get: { settings.travelMode },
+                set: { model.setTravelMode($0) }
+            )) {
+                ForEach(TravelMode.allCases) { mode in
+                    Label(mode.label, systemImage: mode.symbol).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+
             if showOptions {
                 VStack(spacing: 4) {
-                    Toggle("Avoid tolls", isOn: $settings.avoidTolls)
-                    Toggle("Avoid highways", isOn: $settings.avoidHighways)
+                    if settings.travelMode == .driving {
+                        Toggle("Avoid tolls", isOn: $settings.avoidTolls)
+                        Toggle("Avoid highways", isOn: $settings.avoidHighways)
+                    }
                     Toggle("Avoid ferries", isOn: $settings.avoidFerries)
                 }
                 .font(.subheadline)

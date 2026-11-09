@@ -40,14 +40,17 @@ struct MapScreen: View {
         let crossings = showAlerts ? model.routeAlerts.filter { !$0.isCamera } : []
         let instruction = model.coreState?.currentVisualInstruction
         let toManeuver = model.coreState?.currentProgress?.distanceToNextManeuver
-        let junction = navigating && model.settings.junctionView
+        let walking = model.isWalking
+        let parked = model.library.parkedCar
+        let junction = navigating && !walking && model.settings.junctionView
             ? JunctionInfo.from(instruction, distance: toManeuver) : nil
-        let lanes = navigating && model.settings.laneGuidance && junction == nil
+        let lanes = navigating && !walking && model.settings.laneGuidance && junction == nil
             ? (instruction?.subContent?.laneInfo ?? instruction?.primaryContent.laneInfo) : nil
 
         DynamicallyOrientingNavigationView(
             styleURL: styleURL,
             camera: $model.camera,
+            navigationCamera: model.navigationCamera,
             navigationState: model.coreState,
             isMuted: model.isMuted,
             onTapMute: { model.toggleMute() },
@@ -87,6 +90,16 @@ struct MapScreen: View {
                 .iconImage(AlertIcon.camera)
                 .iconAllowsOverlap(true)
             }
+            if let parked, pin?.id != "parked-car" {
+                SymbolStyleLayer(
+                    identifier: "parked-car",
+                    source: ShapeSource(identifier: "parked-car-source") {
+                        MLNPointFeature(coordinate: parked.coordinate)
+                    }
+                )
+                .iconImage(AlertIcon.parkedCar)
+                .iconAllowsOverlap(true)
+            }
             if let pin {
                 let source = ShapeSource(identifier: "pin-source") {
                     MLNPointFeature(coordinate: pin.coordinate)
@@ -107,7 +120,7 @@ struct MapScreen: View {
             controller.mapView.compassViewMargins = CGPoint(x: 16, y: 120)
         }
         .navigationSpeedLimit(
-            speedLimit: model.settings.showSpeedLimit ? annotation.speedLimit : nil,
+            speedLimit: model.settings.showSpeedLimit && !walking ? annotation.speedLimit : nil,
             speedLimitStyle: .mutcdStyle
         )
         .navigationFormatterCollection(
@@ -153,6 +166,7 @@ struct MapScreen: View {
 /// Map icons for cameras and crossings.
 enum AlertIcon {
     static let camera = badge("camera.fill", fill: .systemOrange)
+    static let parkedCar = badge("car.fill", fill: .systemTeal)
     static let railroad = badge("train.side.front.car", fill: .systemYellow, glyph: .black)
 
     private static func badge(_ symbol: String, fill: UIColor, glyph: UIColor = .white) -> UIImage {

@@ -29,11 +29,11 @@ final class OfflineRouteProvider: CustomRouteProvider {
     private let valhalla: Valhalla
     private let adapter: RouteAdapter
 
-    init(routingTar: URL, options: [String: Any]) throws {
+    init(routingTar: URL, profile: String, options: [String: Any]) throws {
         valhalla = try Self.engine(for: routingTar)
         let provider = try WellKnownRouteProvider.valhalla(
             endpointUrl: "https://offline.invalid/route",
-            profile: "auto"
+            profile: profile
         ).withJsonOptions(options: options)
         adapter = try RouteAdapter.fromWellKnownRouteProvider(wellKnownRouteProvider: provider)
     }

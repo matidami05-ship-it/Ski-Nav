@@ -13,6 +13,15 @@ enum MapAppearance: String, CaseIterable, Identifiable {
     }
 }
 
+enum TravelMode: String, CaseIterable, Identifiable {
+    case driving, walking
+    var id: String { rawValue }
+    var label: String { self == .driving ? "Drive" : "Walk" }
+    var symbol: String { self == .driving ? "car.fill" : "figure.walk" }
+    /// Valhalla costing model.
+    var profile: String { self == .driving ? "auto" : "pedestrian" }
+}
+
 /// User preferences, saved in UserDefaults.
 @MainActor
 @Observable
@@ -36,6 +45,9 @@ final class AppSettings {
     var laneGuidance: Bool { didSet { defaults.set(laneGuidance, forKey: "laneGuidance") } }
     var streetView: Bool { didSet { defaults.set(streetView, forKey: "streetView") } }
     var junctionView: Bool { didSet { defaults.set(junctionView, forKey: "junctionView") } }
+    var travelMode: TravelMode { didSet { defaults.set(travelMode.rawValue, forKey: "travelMode") } }
+    /// Save where the car is when CarPlay disconnects.
+    var autoSaveParking: Bool { didSet { defaults.set(autoSaveParking, forKey: "autoSaveParking") } }
     var activeRegionID: String? { didSet { defaults.set(activeRegionID, forKey: "activeRegionID") } }
 
     private init() {
@@ -54,6 +66,8 @@ final class AppSettings {
             "laneGuidance": true,
             "junctionView": true,
             "streetView": true,
+            "travelMode": TravelMode.driving.rawValue,
+            "autoSaveParking": true,
         ])
         useMiles = defaults.bool(forKey: "useMiles")
         avoidTolls = defaults.bool(forKey: "avoidTolls")
@@ -70,11 +84,13 @@ final class AppSettings {
         laneGuidance = defaults.bool(forKey: "laneGuidance")
         junctionView = defaults.bool(forKey: "junctionView")
         streetView = defaults.bool(forKey: "streetView")
+        travelMode = TravelMode(rawValue: defaults.string(forKey: "travelMode") ?? "") ?? .driving
+        autoSaveParking = defaults.bool(forKey: "autoSaveParking")
     }
 
     /// Anything that changes how routes are calculated.
     var routingKey: String {
-        "\(useMiles)-\(avoidTolls)-\(avoidHighways)-\(avoidFerries)"
+        "\(travelMode.rawValue)-\(useMiles)-\(avoidTolls)-\(avoidHighways)-\(avoidFerries)"
     }
 
     /// Valhalla request options.
@@ -87,6 +103,11 @@ final class AppSettings {
                     "use_tolls": avoidTolls ? 0.0 : 0.5,
                     "use_highways": avoidHighways ? 0.0 : 1.0,
                     "use_ferry": avoidFerries ? 0.0 : 0.5,
+                ],
+                "pedestrian": [
+                    "use_ferry": avoidFerries ? 0.0 : 0.5,
+                    "walkway_factor": 0.9,
+                    "sidewalk_factor": 0.9,
                 ],
             ],
         ]

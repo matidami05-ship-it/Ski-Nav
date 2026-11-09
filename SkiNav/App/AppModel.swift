@@ -128,19 +128,21 @@ final class AppModel {
         var mode: RoutingMode
     }
 
-    static var navigationConfig: SwiftNavigationControllerConfig {
-        SwiftNavigationControllerConfig(
-            waypointAdvance: .waypointWithinRange(100.0),
+    static func navigationConfig(_ mode: TravelMode) -> SwiftNavigationControllerConfig {
+        let walking = mode == .walking
+        return SwiftNavigationControllerConfig(
+            waypointAdvance: .waypointWithinRange(walking ? 25.0 : 100.0),
             stepAdvanceCondition: stepAdvanceDistanceEntryAndExit(
-                distanceToEndOfStep: 30,
-                distanceAfterEndOfStep: 5,
+                distanceToEndOfStep: walking ? 10 : 30,
+                distanceAfterEndOfStep: walking ? 3 : 5,
                 minimumHorizontalAccuracy: 32
             ),
             arrivalStepAdvanceCondition: stepAdvanceDistanceToEndOfStep(
-                distance: 25,
+                distance: walking ? 12 : 25,
                 minimumHorizontalAccuracy: 32
             ),
-            routeDeviationTracking: .staticThreshold(minimumHorizontalAccuracy: 25, maxAcceptableDeviation: 45),
+            routeDeviationTracking: .staticThreshold(minimumHorizontalAccuracy: 25,
+                                                     maxAcceptableDeviation: walking ? 35 : 45),
             snappedLocationCourseFiltering: .snapToRoute
         )
     }
@@ -156,29 +158,33 @@ final class AppModel {
         voice.rate = Float(settings.speechRate)
         let speech = SpokenInstructionObserver(synthesizer: voice, isMuted: settings.voiceMuted)
         let options = settings.routeOptions
+        let mode = settings.travelMode
+        let config = navigationConfig(mode)
+        locationProvider.activityType = mode == .walking ? .otherNavigation : .automotiveNavigation
 
         if let pack,
-           let provider = try? OfflineRouteProvider(routingTar: regions.fileURL(pack, .routing), options: options)
+           let provider = try? OfflineRouteProvider(routingTar: regions.fileURL(pack, .routing),
+                                                    profile: mode.profile, options: options)
         {
             let core = FerrostarCore(
                 customRouteProvider: provider,
                 locationProvider: locationProvider,
-                navigationControllerConfig: navigationConfig,
+                navigationControllerConfig: config,
                 annotation: annotation,
                 spokenInstructionObserver: speech
             )
             return BuiltCore(core: core, annotation: annotation, mode: .offline(pack.name))
         }
 
-        let online = (try? WellKnownRouteProvider.valhalla(endpointUrl: onlineRoutingURL, profile: "auto")
+        let online = (try? WellKnownRouteProvider.valhalla(endpointUrl: onlineRoutingURL, profile: mode.profile)
             .withJsonOptions(options: options))
-            ?? .valhalla(endpointUrl: onlineRoutingURL, profile: "auto")
+            ?? .valhalla(endpointUrl: onlineRoutingURL, profile: mode.profile)
         let core: FerrostarCore
         do {
             core = try FerrostarCore(
                 wellKnownRouteProvider: online,
                 locationProvider: locationProvider,
-                navigationControllerConfig: navigationConfig,
+                navigationControllerConfig: config,
                 annotation: annotation,
                 spokenInstructionObserver: speech
             )
@@ -188,7 +194,7 @@ final class AppModel {
             core = FerrostarCore(
                 routeAdapter: adapter,
                 locationProvider: locationProvider,
-                navigationControllerConfig: navigationConfig,
+                navigationControllerConfig: config,
                 annotation: annotation,
                 spokenInstructionObserver: speech
             )
@@ -237,7 +243,7 @@ final class AppModel {
     func updateRouteAlerts() {
         alertTask?.cancel()
         let route = screen == .navigating ? core.route : selectedRoute
-        guard let route, let index = alertIndex,
+        guard let route, let index = alertIndex, !isWalking,
               settings.speedCameraAlerts || settings.railroadAlerts
         else {
             routeAlerts = []
@@ -300,6 +306,9 @@ final class AppModel {
         updateUpcomingAlert(state)
         if case .complete = state.tripState, !arrived {
             arrived = true
+            if !isWalking, settings.autoSaveParking {
+                saveParking()
+            }
             Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 6_000_000_000)
                 if self.arrived { self.stopNavigation() }
@@ -362,7 +371,8 @@ final class AppModel {
                 guard case .offline = routingMode,
                       settings.useOnlineWhenAvailable, Connectivity.shared.isOnline
                 else { throw error }
-                found = try await Self.onlineRoutes(from: here, waypoints: waypoints, options: settings.routeOptions)
+                found = try await Self.onlineRoutes(from: here, waypoints: waypoints,
+                                                    profile: settings.travelMode.profile, options: settings.routeOptions)
             }
             guard screen == .routes, selectedPlace?.id == place.id else { return }
             guard !found.isEmpty else { throw RoutingError.engine("No route found.") }
@@ -375,8 +385,10 @@ final class AppModel {
         }
     }
 
-    private static func onlineRoutes(from here: CLLocation, waypoints: [Waypoint], options: [String: Any]) async throws -> [Route] {
-        let provider = try WellKnownRouteProvider.valhalla(endpointUrl: onlineRoutingURL, profile: "auto")
+    private static func onlineRoutes(from here: CLLocation, waypoints: [Waypoint], profile: String,
+                                     options: [String: Any]) async throws -> [Route]
+    {
+        let provider = try WellKnownRouteProvider.valhalla(endpointUrl: onlineRoutingURL, profile: profile)
             .withJsonOptions(options: options)
         let adapter = try RouteAdapter.fromWellKnownRouteProvider(wellKnownRouteProvider: provider)
         guard case let .httpPost(url, headers, body) = try adapter.generateRequest(
@@ -424,11 +436,57 @@ final class AppModel {
             screen = .navigating
             announcedAlerts = []
             updateRouteAlerts()
-            camera = .automotiveNavigation()
+            camera = navigationCamera
             UIApplication.shared.isIdleTimerDisabled = true
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// The follow-me camera for the current travel mode.
+    var navigationCamera: MapViewCamera {
+        settings.travelMode == .walking ? .navigation(activity: .pedestrian) : .automotiveNavigation()
+    }
+
+    var isWalking: Bool { settings.travelMode == .walking }
+
+    /// Switch between driving and walking and recalculate the routes on screen.
+    func setTravelMode(_ mode: TravelMode) {
+        guard mode != settings.travelMode, screen != .navigating else { return }
+        settings.travelMode = mode
+        refreshRouting()
+        if screen == .routes, let place = selectedPlace {
+            Task { await directions(to: place) }
+        }
+    }
+
+    // MARK: Parking
+
+    /// Remember where the car is. Uses the current location unless a coordinate is given.
+    func saveParking(at coordinate: CLLocationCoordinate2D? = nil, note: String? = nil) {
+        guard let c = coordinate ?? userLocation?.coordinate else {
+            errorMessage = "Waiting for your location…"
+            return
+        }
+        library.setParkedCar(at: c, note: note)
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        Task {
+            let described = await PlaceSearch.describe(c)
+            if described.name != "Dropped Pin" || !described.subtitle.isEmpty {
+                library.updateParkedAddress(described.name == "Dropped Pin" ? described.subtitle : described.name)
+            }
+        }
+    }
+
+    /// Walking directions back to the car.
+    func walkToCar() {
+        guard let car = library.parkedCar?.place else { return }
+        if settings.travelMode != .walking {
+            settings.travelMode = .walking
+            refreshRouting()
+        }
+        selectedPlace = car
+        Task { await directions(to: car) }
     }
 
     func stopNavigation() {
@@ -442,6 +500,8 @@ final class AppModel {
         routeAlerts = []
         upcomingAlert = nil
         locationProvider.startUpdating()
+        // Walking is usually a one-off (back to the car); next trip defaults to driving.
+        if settings.travelMode == .walking { settings.travelMode = .driving }
         recenter()
         refreshRouting()
     }
