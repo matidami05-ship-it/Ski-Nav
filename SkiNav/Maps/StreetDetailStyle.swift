@@ -62,7 +62,7 @@ enum StreetDetailStyle {
             "id": "ski-buildings-3d", "type": "fill-extrusion", "source": "protomaps",
             "source-layer": "buildings", "minzoom": 14.5,
             "paint": [
-                "fill-extrusion-color": dark ? "#2d3440" : "#dcd8d2",
+                "fill-extrusion-color": dark ? "#353b46" : "#dcd8d2",
                 "fill-extrusion-height": ["interpolate", ["linear"], ["zoom"],
                                           14.5, 0, 15.5, ["coalesce", ["get", "height"], 8]],
                 "fill-extrusion-base": ["coalesce", ["get", "min_height"], 0],
@@ -73,10 +73,10 @@ enum StreetDetailStyle {
     }
 
     static func detailLayers(dark: Bool) -> [[String: Any]] {
-        let asphalt = dark ? "#3b4049" : "#b8bdc5"
+        let asphalt = dark ? "#4b525e" : "#b8bdc5"
         let marking = dark ? "#e6e6e6" : "#ffffff"
         let yellow = dark ? "#e0b84a" : "#f2c230"
-        let sidewalk = dark ? "#4b4d52" : "#e4e1da"
+        let sidewalk = dark ? "#3a3f48" : "#e4e1da"
         let curb = dark ? "#5c5f66" : "#cfcac0"
         let notTunnel: Any = ["!=", ["get", "t"], 1]
         let twoWay: Any = ["==", ow, 0]

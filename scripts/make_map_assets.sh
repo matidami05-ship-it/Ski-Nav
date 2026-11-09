@@ -41,6 +41,39 @@ const renameFonts = (v) =>
   : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, renameFonts(x)]))
   : typeof v === "string" && fonts[v] ? fonts[v] : v;
 
+// Night palette: Protomaps' dark theme is nearly black, so lift it toward an Apple Maps
+// style night look — blue-gray land, clearly lighter roads, blue water, readable labels.
+const casing = "#181b20";
+const NIGHT = {
+  background: "#1e2229", earth: "#23272e",
+  park_a: "#1f3029", park_b: "#21362b", wood_a: "#22312a", wood_b: "#22312a",
+  scrub_a: "#242b2b", scrub_b: "#242b2b", glacier: "#2b3038", sand: "#2c2c2a", beach: "#302f2a",
+  hospital: "#2c272b", industrial: "#272b31", school: "#2b2931", pedestrian: "#2a2e36",
+  aerodrome: "#272b32", runway: "#3c414a", zoo: "#24292a", military: "#2b2a2f",
+  water: "#1c3049",
+  tunnel_other_casing: casing, tunnel_minor_casing: casing, tunnel_link_casing: casing,
+  tunnel_major_casing: casing, tunnel_highway_casing: casing,
+  tunnel_other: "#363b44", tunnel_minor: "#363b44", tunnel_link: "#454c57",
+  tunnel_major: "#454c57", tunnel_highway: "#535b69",
+  pier: "#3c414a", buildings: "#2d323b",
+  minor_service_casing: casing, minor_casing: casing, link_casing: casing,
+  major_casing_late: casing, highway_casing_late: casing,
+  major_casing_early: casing, highway_casing_early: casing,
+  other: "#3d434e", minor_service: "#3d434e", minor_a: "#4b525e", minor_b: "#454c57",
+  link: "#5b6372", major: "#5b6372", highway: "#6e778a",
+  railway: "#5f6673", boundaries: "#6b7385",
+  bridges_other_casing: casing, bridges_minor_casing: casing, bridges_link_casing: casing,
+  bridges_major_casing: casing, bridges_highway_casing: casing,
+  bridges_other: "#3d434e", bridges_minor: "#4b525e", bridges_link: "#5b6372",
+  bridges_major: "#5b6372", bridges_highway: "#6e778a",
+  roads_label_minor: "#a9afba", roads_label_minor_halo: "#1e2229",
+  roads_label_major: "#c7ccd4", roads_label_major_halo: "#1e2229",
+  ocean_label: "#86a4c8", subplace_label: "#9ca3ae", subplace_label_halo: "#1e2229",
+  city_label: "#e1e4ea", city_label_halo: "#1e2229",
+  state_label: "#7f8693", state_label_halo: "#1e2229", country_label: "#a3a9b5",
+  address_label: "#8b919c", address_label_halo: "#1e2229",
+};
+
 for (const flavor of ["light", "dark"]) {
   const style = {
     version: 8,
@@ -54,7 +87,9 @@ for (const flavor of ["light", "dark"]) {
         attribution: "© OpenStreetMap contributors · Protomaps",
       },
     },
-    layers: renameFonts(layers("protomaps", namedFlavor(flavor), { lang: "en" })),
+    layers: renameFonts(layers("protomaps",
+      flavor === "dark" ? { ...namedFlavor("dark"), ...NIGHT } : namedFlavor(flavor),
+      { lang: "en" })),
   };
   writeFileSync(`${flavor}.json`, JSON.stringify(style));
 }
