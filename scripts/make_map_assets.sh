@@ -43,36 +43,37 @@ const renameFonts = (v) =>
 
 // Night palette: Protomaps' dark theme is nearly black, so lift it toward an Apple Maps
 // style night look — blue-gray land, clearly lighter roads, blue water, readable labels.
-const casing = "#181b20";
+const casing = "#1a1e24";
+// Night palette modeled on TomTom AmiGO: teal-green woods and parks, blue lakes, purple
+// commercial areas, clear gray roads and bright white labels on a dark slate base.
 const NIGHT = {
-  background: "#1e2229", earth: "#23272e",
-  park_a: "#1f3029", park_b: "#21362b", wood_a: "#22312a", wood_b: "#22312a",
-  scrub_a: "#242b2b", scrub_b: "#242b2b", glacier: "#2b3038", sand: "#2c2c2a", beach: "#302f2a",
-  hospital: "#2c272b", industrial: "#272b31", school: "#2b2931", pedestrian: "#2a2e36",
-  aerodrome: "#272b32", runway: "#3c414a", zoo: "#24292a", military: "#2b2a2f",
-  water: "#1c3049",
+  background: "#1f242b", earth: "#1f242b",
+  park_a: "#24453b", park_b: "#26493e", wood_a: "#23463e", wood_b: "#24493f",
+  scrub_a: "#253f38", scrub_b: "#253f38", glacier: "#2c333b", sand: "#2e2f2b", beach: "#33332d",
+  hospital: "#3a2a33", industrial: "#3b2840", school: "#2f2b3a", pedestrian: "#2a2f37",
+  aerodrome: "#2a2f37", runway: "#454c57", zoo: "#24453b", military: "#2e2a33",
+  water: "#3c5f97",
   tunnel_other_casing: casing, tunnel_minor_casing: casing, tunnel_link_casing: casing,
   tunnel_major_casing: casing, tunnel_highway_casing: casing,
-  tunnel_other: "#454d5c", tunnel_minor: "#4d5668", tunnel_link: "#7d6f4c",
-  tunnel_major: "#7d6f4c", tunnel_highway: "#8a6536",
-  pier: "#3c414a", buildings: "#2d323b",
+  tunnel_other: "#414955", tunnel_minor: "#4a5361", tunnel_link: "#5a6475",
+  tunnel_major: "#5a6475", tunnel_highway: "#66718a",
+  pier: "#454c57", buildings: "#2e333b",
   minor_service_casing: casing, minor_casing: casing, link_casing: casing,
   major_casing_late: casing, highway_casing_late: casing,
   major_casing_early: casing, highway_casing_early: casing,
-  // Color by road type: blue-gray side streets, gold main roads, amber highways.
-  other: "#566078", minor_service: "#566078", minor_a: "#7884a0", minor_b: "#6c7894",
-  link: "#c4a65e", major: "#d4b465", highway: "#e8963a",
-  railway: "#5f6673", boundaries: "#6b7385",
+  other: "#4c5563", minor_service: "#4c5563", minor_a: "#5f697a", minor_b: "#596374",
+  link: "#7a8598", major: "#7f8a9e", highway: "#95a0b4",
+  railway: "#5f6673", boundaries: "#7a8296",
   bridges_other_casing: casing, bridges_minor_casing: casing, bridges_link_casing: casing,
   bridges_major_casing: casing, bridges_highway_casing: casing,
-  bridges_other: "#566078", bridges_minor: "#7884a0", bridges_link: "#c4a65e",
-  bridges_major: "#d4b465", bridges_highway: "#e8963a",
-  roads_label_minor: "#b9bfca", roads_label_minor_halo: "#1e2229",
-  roads_label_major: "#f0d999", roads_label_major_halo: "#1e2229",
-  ocean_label: "#86a4c8", subplace_label: "#9ca3ae", subplace_label_halo: "#1e2229",
-  city_label: "#e1e4ea", city_label_halo: "#1e2229",
-  state_label: "#7f8693", state_label_halo: "#1e2229", country_label: "#a3a9b5",
-  address_label: "#8b919c", address_label_halo: "#1e2229",
+  bridges_other: "#4c5563", bridges_minor: "#5f697a", bridges_link: "#7a8598",
+  bridges_major: "#7f8a9e", bridges_highway: "#95a0b4",
+  roads_label_minor: "#d6dae1", roads_label_minor_halo: "#1f242b",
+  roads_label_major: "#eef0f4", roads_label_major_halo: "#1f242b",
+  ocean_label: "#a9c2e6", subplace_label: "#c3c8d1", subplace_label_halo: "#1f242b",
+  city_label: "#f4f6f9", city_label_halo: "#1f242b",
+  state_label: "#8a92a0", state_label_halo: "#1f242b", country_label: "#b3b9c4",
+  address_label: "#9aa1ad", address_label_halo: "#1f242b",
 };
 
 for (const flavor of ["light", "dark"]) {

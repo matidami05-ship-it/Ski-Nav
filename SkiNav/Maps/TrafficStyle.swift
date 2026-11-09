@@ -25,7 +25,8 @@ enum TrafficStyle {
     static let incidentJam = "ski-inc-jam"
     static let incidentHazard = "ski-inc-hazard"
 
-    static func apply(to style: inout [String: Any], key: String, traffic: Bool, satellite: Bool, dark: Bool) {
+    static func apply(to style: inout [String: Any], key: String, traffic: Bool, satellite: Bool, dark: Bool,
+                      flow: Bool = true, incidents: Bool = true) {
         guard var layers = style["layers"] as? [[String: Any]] else { return }
         var sources = style["sources"] as? [String: Any] ?? [:]
 
@@ -71,7 +72,7 @@ enum TrafficStyle {
                                19, ["case", oneSide, 9, 0]]
 
             let labelsAt = StyleTweaks.overlayIndex(layers)
-            layers.insert(contentsOf: [
+            if flow { layers.insert(contentsOf: [
                 [
                     "id": "ski-traffic-casing", "type": "line", "source": "ski-traffic",
                     "source-layer": "Traffic flow", "filter": filter,
@@ -93,10 +94,10 @@ enum TrafficStyle {
                     "paint": ["line-color": "#ffffff", "line-width": width, "line-dasharray": [0.6, 1.4],
                               "line-offset": offset],
                 ],
-            ] as [[String: Any]], at: labelsAt)
+            ] as [[String: Any]], at: labelsAt) }
 
             // Incident icons go above the labels so they're never hidden.
-            layers.append([
+            if incidents { layers.append([
                 "id": "ski-incidents", "type": "symbol", "source": "ski-incidents",
                 "source-layer": "Traffic incident POI", "minzoom": 9,
                 "layout": [
@@ -111,7 +112,7 @@ enum TrafficStyle {
                     "icon-allow-overlap": false,
                     "symbol-sort-key": ["*", -1, ["coalesce", ["get", "magnitude"], 0]],
                 ],
-            ])
+            ]) }
         }
 
         style["sources"] = sources

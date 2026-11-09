@@ -108,6 +108,54 @@ enum TrafficService {
         return (departure, arrival, delay)
     }
 
+    /// A live incident (accident, roadwork, closure…) from TomTom.
+    struct Incident {
+        var category: Int
+        var description: String
+        var delay: Double
+        var points: [CLLocationCoordinate2D]
+    }
+
+    /// Incidents inside a box (keep it under ~100 x 100 km). TomTom Incident Details API.
+    static func incidents(minLat: Double, minLon: Double, maxLat: Double, maxLon: Double, key: String,
+                          language: String) async -> [Incident]
+    {
+        let fields = "{incidents{type,geometry{type,coordinates},properties{iconCategory,delay,events{description}}}}"
+        var c = URLComponents(string: "https://api.tomtom.com/traffic/services/5/incidentDetails")!
+        c.queryItems = [
+            URLQueryItem(name: "key", value: key),
+            URLQueryItem(name: "bbox", value: String(format: "%.5f,%.5f,%.5f,%.5f", minLon, minLat, maxLon, maxLat)),
+            URLQueryItem(name: "fields", value: fields),
+            URLQueryItem(name: "language", value: language),
+            URLQueryItem(name: "timeValidityFilter", value: "present"),
+        ]
+        guard let url = c.url,
+              let result = try? await URLSession.shared.data(from: url),
+              (result.1 as? HTTPURLResponse)?.statusCode == 200,
+              let obj = try? JSONSerialization.jsonObject(with: result.0) as? [String: Any],
+              let list = obj["incidents"] as? [[String: Any]]
+        else { return [] }
+
+        return list.compactMap { item in
+            guard let props = item["properties"] as? [String: Any],
+                  let geometry = item["geometry"] as? [String: Any]
+            else { return nil }
+            var points: [CLLocationCoordinate2D] = []
+            if let coords = geometry["coordinates"] as? [[Double]] {
+                points = coords.compactMap { $0.count >= 2 ? CLLocationCoordinate2D(latitude: $0[1], longitude: $0[0]) : nil }
+            } else if let c = geometry["coordinates"] as? [Double], c.count >= 2 {
+                points = [CLLocationCoordinate2D(latitude: c[1], longitude: c[0])]
+            }
+            let events = props["events"] as? [[String: Any]] ?? []
+            return Incident(
+                category: (props["iconCategory"] as? NSNumber)?.intValue ?? 0,
+                description: events.first?["description"] as? String ?? "",
+                delay: (props["delay"] as? NSNumber)?.doubleValue ?? 0,
+                points: points
+            )
+        }
+    }
+
     /// Checks that a key works (one tiny traffic tile).
     static func validate(key: String) async -> Bool {
         guard let url = URL(string: TrafficStyle.flowTiles(key: key)

@@ -7,6 +7,8 @@ struct RouteAlert: Identifiable, Hashable {
     enum Kind: Hashable {
         case speedCamera(limitKmh: Int?)
         case railroadCrossing
+        /// Live incident from traffic data: TomTom icon category and its description.
+        case hazard(category: Int, text: String)
     }
 
     var kind: Kind
@@ -14,7 +16,19 @@ struct RouteAlert: Identifiable, Hashable {
     /// Meters from the start of the route.
     var distanceAlong: Double
 
-    var id: String { String(format: "%@-%.5f,%.5f", isCamera ? "cam" : "rail", coordinate.latitude, coordinate.longitude) }
+    var id: String {
+        let prefix = switch kind {
+        case .speedCamera: "cam"
+        case .railroadCrossing: "rail"
+        case let .hazard(category, _): "haz\(category)"
+        }
+        return String(format: "%@-%.5f,%.5f", prefix, coordinate.latitude, coordinate.longitude)
+    }
+
+    var isHazard: Bool {
+        if case .hazard = kind { return true }
+        return false
+    }
 
     var isCamera: Bool {
         if case .speedCamera = kind { return true }
@@ -22,7 +36,7 @@ struct RouteAlert: Identifiable, Hashable {
     }
 
     /// How far ahead to warn.
-    var warnDistance: Double { isCamera ? 600 : 400 }
+    var warnDistance: Double { isHazard ? 2400 : isCamera ? 600 : 400 }
 
     func title(miles: Bool) -> String {
         switch kind {
@@ -32,6 +46,37 @@ struct RouteAlert: Identifiable, Hashable {
             return "Speed camera ahead · \(shown) \(miles ? "mph" : "km/h")"
         case .railroadCrossing:
             return "Railroad crossing ahead"
+        case let .hazard(category, _):
+            return Self.hazardLabel(category, polish: false)
+        }
+    }
+
+    static func hazardLabel(_ category: Int, polish: Bool) -> String {
+        switch category {
+        case 1: polish ? "Wypadek" : "Accident"
+        case 2: polish ? "Mgła" : "Fog"
+        case 3: polish ? "Niebezpieczeństwo" : "Danger"
+        case 5: polish ? "Oblodzenie" : "Ice"
+        case 6: polish ? "Korek" : "Traffic jam"
+        case 7: polish ? "Zamknięty pas" : "Lane closed"
+        case 8: polish ? "Droga zamknięta" : "Road closed"
+        case 9: polish ? "Roboty drogowe" : "Roadwork"
+        case 10: polish ? "Silny wiatr" : "Strong wind"
+        case 11: polish ? "Zalanie" : "Flooding"
+        case 14: polish ? "Zepsuty pojazd" : "Broken-down vehicle"
+        default: polish ? "Utrudnienie" : "Hazard"
+        }
+    }
+
+    var hazardSymbol: String {
+        guard case let .hazard(category, _) = kind else { return symbol }
+        switch category {
+        case 1: return "car.side.rear.and.collision.and.car.side.front"
+        case 8: return "nosign"
+        case 7: return "arrow.triangle.merge"
+        case 9: return "cone.fill"
+        case 6: return "car.2.fill"
+        default: return "exclamationmark.triangle.fill"
         }
     }
 

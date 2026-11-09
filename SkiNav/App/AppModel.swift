@@ -77,6 +77,9 @@ final class AppModel {
     private(set) var routeTraffic: [Int: TrafficInfo] = [:]
     private(set) var navTraffic: TrafficInfo?
     @ObservationIgnored private var trafficTask: Task<Void, Never>?
+    /// Live incidents (accidents, roadwork, closures) on the route ahead.
+    @ObservationIgnored private var hazardAlerts: [RouteAlert] = []
+    @ObservationIgnored private var lastTrafficWarning: Date?
     var showAlongRoute = false
 
     /// The trip: stops in order, the last one is the destination.
@@ -317,12 +320,13 @@ final class AppModel {
     }
 
     private func updateUpcomingAlert(_ state: NavigationState) {
-        guard let route = core.route, let progress = state.currentProgress, !routeAlerts.isEmpty else {
+        let all = (routeAlerts + (settings.hazardWarnings ? hazardAlerts : [])).sorted { $0.distanceAlong < $1.distanceAlong }
+        guard let route = core.route, let progress = state.currentProgress, !all.isEmpty else {
             upcomingAlert = nil
             return
         }
         let traveled = route.distance - progress.distanceRemaining
-        let next = routeAlerts.first { alert in
+        let next = all.first { alert in
             let ahead = alert.distanceAlong - traveled
             return ahead > -15 && ahead <= alert.warnDistance
         }
@@ -332,8 +336,14 @@ final class AppModel {
             announcedAlerts.insert(next.id)
             UINotificationFeedbackGenerator().notificationOccurred(.warning)
             if !isMuted {
-                voice.speak(text: Phrases.text(next.isCamera ? "camera" : "railroad",
-                                               language: settings.guidanceLanguage.rawValue))
+                let language = settings.guidanceLanguage.rawValue
+                if case let .hazard(category, _) = next.kind {
+                    let polish = language.hasPrefix("pl")
+                    let label = RouteAlert.hazardLabel(category, polish: polish)
+                    voice.speak(text: polish ? "Uwaga, \(label.lowercased()) przed tobą." : "\(label) ahead.")
+                } else {
+                    voice.speak(text: Phrases.text(next.isCamera ? "camera" : "railroad", language: language))
+                }
             }
         }
     }
@@ -514,7 +524,59 @@ final class AppModel {
            screen == .navigating
         {
             navTraffic = info
+            if info.isHeavy, settings.trafficWarnings, !isMuted,
+               lastTrafficWarning.map({ Date().timeIntervalSince($0) > 900 }) ?? true
+            {
+                lastTrafficWarning = Date()
+                voice.speak(text: Phrases.text("traffic", language: settings.guidanceLanguage.rawValue))
+            }
         }
+        if settings.hazardWarnings {
+            await refreshHazards(route: route, aheadFrom: nearest, key: key)
+        }
+    }
+
+    /// Accidents, roadwork and closures on the next ~40 km of the route.
+    private func refreshHazards(route: Route, aheadFrom start: Int, key: String) async {
+        let geometry = route.geometry
+        guard start < geometry.count - 1 else { return }
+        // Walk the route ahead, remembering distance from the route start for each point.
+        var along = 0.0
+        for i in 0 ..< start {
+            along += POIFinder.approxMeters(geometry[i].lat, geometry[i].lng, geometry[i + 1].lat, geometry[i + 1].lng)
+        }
+        var samples: [(lat: Double, lon: Double, along: Double)] = []
+        var d = along
+        for i in start ..< geometry.count {
+            if i > start {
+                d += POIFinder.approxMeters(geometry[i - 1].lat, geometry[i - 1].lng, geometry[i].lat, geometry[i].lng)
+            }
+            samples.append((geometry[i].lat, geometry[i].lng, d))
+            if d - along > 40000 { break }
+        }
+        guard let minLat = samples.map(\.lat).min(), let maxLat = samples.map(\.lat).max(),
+              let minLon = samples.map(\.lon).min(), let maxLon = samples.map(\.lon).max()
+        else { return }
+        let incidents = await TrafficService.incidents(
+            minLat: minLat - 0.01, minLon: minLon - 0.01, maxLat: maxLat + 0.01, maxLon: maxLon + 0.01,
+            key: key, language: settings.guidanceLanguage.rawValue
+        )
+        var found: [RouteAlert] = []
+        for incident in incidents where incident.category != 0 {
+            // On our route if any of its points lies within ~40 m of the route ahead.
+            var best: (dist: Double, along: Double, point: CLLocationCoordinate2D)?
+            for p in incident.points.prefix(30) {
+                for s in samples {
+                    let dist = POIFinder.approxMeters(s.lat, s.lon, p.latitude, p.longitude)
+                    if dist < 40, best == nil || s.along < best!.along { best = (dist, s.along, p) }
+                }
+            }
+            if let best {
+                found.append(RouteAlert(kind: .hazard(category: incident.category, text: incident.description),
+                                        coordinate: best.point, distanceAlong: best.along))
+            }
+        }
+        hazardAlerts = found
     }
 
     // MARK: Trip planner
@@ -800,6 +862,7 @@ final class AppModel {
         arrived = false
         trafficTask?.cancel()
         navTraffic = nil
+        hazardAlerts = []
         core.stopNavigation()
         UIApplication.shared.isIdleTimerDisabled = false
         screen = .browse

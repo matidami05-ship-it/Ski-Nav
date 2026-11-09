@@ -19,12 +19,14 @@ enum MapStyle {
         let key = settings.tomtomKey.trimmingCharacters(in: .whitespaces)
         let satellite = !key.isEmpty && settings.mapMode == .satellite
         let traffic = !key.isEmpty && (settings.mapMode != .explore || (navigating && settings.trafficWhileNavigating))
+            && (settings.trafficFlow || settings.trafficIncidents)
         let detail = pack.flatMap { settings.streetDetail ? store.detailURL($0) : nil }
         let buildings = settings.buildings3D && pack != nil
 
         let cacheKey = [
             pack.map { "\($0.id)-\($0.version)" } ?? "online", flavor, "v3",
             detail != nil ? "d" : "", buildings ? "b" : "", traffic ? "t" : "", satellite ? "s" : "",
+            settings.trafficFlow ? "f" : "", settings.trafficIncidents ? "i" : "",
             String(key.utf8.reduce(UInt32(5381)) { ($0 &* 33) &+ UInt32($1) } % 100_000),
         ].joined(separator: "-")
         if let cached = cache[cacheKey], FileManager.default.fileExists(atPath: cached.path) { return cached }
@@ -42,7 +44,8 @@ enum MapStyle {
                 StreetDetailStyle.apply(to: &json, detailURL: detail.map(trimmed), dark: dark, buildings: buildings)
             }
             if traffic || satellite {
-                TrafficStyle.apply(to: &json, key: key, traffic: traffic, satellite: satellite, dark: dark)
+                TrafficStyle.apply(to: &json, key: key, traffic: traffic, satellite: satellite, dark: dark,
+                                   flow: settings.trafficFlow, incidents: settings.trafficIncidents)
             }
             // Last, so the route line (drawn just under this) sits above traffic and roads.
             StyleTweaks.addAnchor(&json)
@@ -83,14 +86,15 @@ enum MapStyle {
 
     @MainActor
     private static func onlineCopy(_ flavor: String, store: RegionStore) -> URL {
-        store.mapsDir.appendingPathComponent("online-\(flavor).json")
+        store.mapsDir.appendingPathComponent("online-\(flavor)-liberty.json")
     }
 
     /// Keep a copy of the online styles so traffic and satellite can be added to them too
     /// before any offline map is downloaded.
     @MainActor
     static func saveOnlineStyles(store: RegionStore) async {
-        for (flavor, url) in [("light", onlineLight), ("dark", onlineDark)] {
+        // The detailed "liberty" style for both; at night it's recolored to the Ski Nav palette.
+        for (flavor, url) in [("light", onlineLight), ("dark", onlineLight)] {
             let dest = onlineCopy(flavor, store: store)
             if FileManager.default.fileExists(atPath: dest.path) { continue }
             if let result = try? await URLSession.shared.data(from: url),

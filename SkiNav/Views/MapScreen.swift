@@ -1,3 +1,4 @@
+import AudioToolbox
 import FerrostarCore
 import FerrostarCoreFFI
 import FerrostarMapLibreUI
@@ -174,13 +175,6 @@ struct MapScreen: View {
             topCenter: {
                 if navigating {
                     VStack(spacing: 6) {
-                        if junction == nil, let lanes, !lanes.isEmpty {
-                            ViewThatFits(in: .horizontal) {
-                                LaneGuidanceView(lanes: lanes, cell: 40)
-                                LaneGuidanceView(lanes: lanes, cell: 30)
-                                LaneGuidanceView(lanes: lanes, cell: 22)
-                            }
-                        }
                         if let traffic = model.navTraffic, traffic.isNoticeable {
                             CompactBanner(
                                 symbol: "car.2.fill",
@@ -190,13 +184,22 @@ struct MapScreen: View {
                             )
                         }
                         if let alert = model.upcomingAlert {
-                            CompactBanner(
-                                symbol: alert.isCamera ? "camera.fill" : "train.side.front.car",
-                                tint: alert.isCamera ? .orange : .yellow,
-                                glyph: alert.isCamera ? .white : .black,
-                                title: alert.isCamera ? "Speed camera" : "Rail crossing",
-                                subtitle: Fmt.distance(model.upcomingAlertDistance, miles: model.settings.useMiles)
-                            )
+                            if case let .hazard(category, _) = alert.kind {
+                                CompactBanner(
+                                    symbol: alert.hazardSymbol,
+                                    tint: category == 9 || category == 7 ? .orange : .red,
+                                    title: RouteAlert.hazardLabel(category, polish: false),
+                                    subtitle: Fmt.distance(model.upcomingAlertDistance, miles: model.settings.useMiles)
+                                )
+                            } else {
+                                CompactBanner(
+                                    symbol: alert.isCamera ? "camera.fill" : "train.side.front.car",
+                                    tint: alert.isCamera ? .orange : .yellow,
+                                    glyph: alert.isCamera ? .white : .black,
+                                    title: alert.isCamera ? "Speed camera" : "Rail crossing",
+                                    subtitle: Fmt.distance(model.upcomingAlertDistance, miles: model.settings.useMiles)
+                                )
+                            }
                         }
                     }
                     .frame(maxWidth: .infinity)
@@ -209,6 +212,15 @@ struct MapScreen: View {
                             Text("Finding a new route…")
                         }
                     }
+                }
+            },
+            midLeading: {
+                if navigating && !walking {
+                    SpeedBubble(speed: model.userLocation?.speed ?? -1,
+                                limit: annotation.speedLimit,
+                                miles: model.settings.useMiles,
+                                warn: model.settings.speedingWarning,
+                                tolerance: Double(model.settings.speedingTolerance))
                 }
             },
             bottomLeading: {
@@ -227,16 +239,16 @@ struct MapScreen: View {
                 }
             }
         )
-        .overlay(alignment: .top) {
-            if let junction {
-                JunctionView(info: junction, useMiles: model.settings.useMiles)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 84) // just below the turn banner
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                    .allowsHitTesting(false)
+        .navigationViewComponents(
+            progressView: { state, onExit in
+                AnyView(TripBar(state: state, miles: model.settings.useMiles, traffic: model.navTraffic,
+                                hasTraffic: model.settings.hasTrafficKey, onExit: onExit))
+            },
+            instructionsView: { state, _, size in
+                AnyView(TurnBanner(state: state, miles: model.settings.useMiles,
+                                   lanes: lanes, junction: junction, size: size))
             }
-        }
-        .animation(.snappy, value: junction?.signText)
+        )
         .onLongPressMapGesture { context in
             if context.state == .began {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -361,5 +373,63 @@ struct CompactBanner: View {
         .frame(maxWidth: 220, alignment: .leading)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .shadow(color: .black.opacity(0.25), radius: 5, y: 2)
+    }
+}
+
+/// Current speed, like AmiGO: a white circle that turns red with a chime when you're over
+/// the limit (plus your tolerance) for a few seconds.
+struct SpeedBubble: View {
+    var speed: Double // m/s, negative if unknown
+    var limit: Measurement<UnitSpeed>?
+    var miles: Bool
+    var warn: Bool
+    var tolerance: Double
+
+    @State private var overSince: Date?
+    @State private var lastChime: Date?
+
+    private var shown: Int? {
+        guard speed >= 0 else { return nil }
+        return Int((miles ? speed * 2.23694 : speed * 3.6).rounded())
+    }
+
+    private var limitShown: Double? {
+        limit.map { miles ? $0.converted(to: .milesPerHour).value : $0.converted(to: .kilometersPerHour).value }
+    }
+
+    private var speeding: Bool {
+        guard warn, let shown, let limitShown, limitShown > 0 else { return false }
+        return Double(shown) > limitShown + tolerance
+    }
+
+    var body: some View {
+        if let shown {
+            VStack(spacing: -2) {
+                Text("\(shown)")
+                    .font(.system(size: 24, weight: .bold).monospacedDigit())
+                Text(miles ? "mph" : "km/h")
+                    .font(.system(size: 10, weight: .semibold))
+            }
+            .foregroundStyle(speeding ? .white : .black)
+            .frame(width: 62, height: 62)
+            .background(Circle().fill(speeding ? Color.red : Color.white))
+            .overlay(Circle().strokeBorder(speeding ? Color.white : Color.black.opacity(0.15), lineWidth: 3))
+            .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
+            .scaleEffect(speeding ? 1.08 : 1)
+            .animation(.spring(duration: 0.3), value: speeding)
+            .onChange(of: speeding) { _, now in
+                overSince = now ? Date() : nil
+            }
+            .onChange(of: shown) {
+                // Chime once you've been over for 3 seconds, at most every 45 seconds.
+                guard speeding, let since = overSince, Date().timeIntervalSince(since) > 3,
+                      lastChime.map({ Date().timeIntervalSince($0) > 45 }) ?? true
+                else { return }
+                lastChime = Date()
+                AudioServicesPlaySystemSound(1016)
+                UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            }
+            .accessibilityLabel("Speed \(shown) \(miles ? "miles" : "kilometers") per hour\(speeding ? ", over the limit" : "")")
+        }
     }
 }

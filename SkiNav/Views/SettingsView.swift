@@ -34,6 +34,19 @@ struct SettingsView: View {
                     }
                 }
 
+                Section {
+                    NavigationLink {
+                        MapDisplayView()
+                    } label: {
+                        Label("Map & display", systemImage: "map")
+                    }
+                    NavigationLink {
+                        WarningsView()
+                    } label: {
+                        Label("Warnings", systemImage: "exclamationmark.triangle")
+                    }
+                }
+
                 Section("Map") {
                     Picker("Appearance", selection: $settings.appearance) {
                         ForEach(MapAppearance.allCases) { Text($0.label).tag($0) }

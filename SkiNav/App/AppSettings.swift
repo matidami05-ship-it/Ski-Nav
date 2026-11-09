@@ -80,6 +80,13 @@ final class AppSettings {
     var azureVoice: String { didSet { defaults.set(azureVoice, forKey: "azureVoice") } }
     /// Say US street names with English pronunciation inside Polish instructions.
     var englishStreetNames: Bool { didSet { defaults.set(englishStreetNames, forKey: "englishStreetNames") } }
+    var trafficFlow: Bool { didSet { defaults.set(trafficFlow, forKey: "trafficFlow") } }
+    var trafficIncidents: Bool { didSet { defaults.set(trafficIncidents, forKey: "trafficIncidents") } }
+    var trafficWarnings: Bool { didSet { defaults.set(trafficWarnings, forKey: "trafficWarnings") } }
+    var hazardWarnings: Bool { didSet { defaults.set(hazardWarnings, forKey: "hazardWarnings") } }
+    var speedingWarning: Bool { didSet { defaults.set(speedingWarning, forKey: "speedingWarning") } }
+    /// How far over the limit before warning, in mph (or km/h with kilometers).
+    var speedingTolerance: Int { didSet { defaults.set(speedingTolerance, forKey: "speedingTolerance") } }
     var mapMode: MapMode { didSet { defaults.set(mapMode.rawValue, forKey: "mapMode") } }
     /// Free key from developer.tomtom.com, for live traffic and satellite imagery.
     var tomtomKey: String { didSet { defaults.set(tomtomKey, forKey: "tomtomKey") } }
@@ -113,6 +120,12 @@ final class AppSettings {
             "travelMode": TravelMode.driving.rawValue,
             "autoSaveParking": true,
             "buildings3D": true,
+            "trafficFlow": true,
+            "trafficIncidents": true,
+            "trafficWarnings": true,
+            "hazardWarnings": true,
+            "speedingWarning": true,
+            "speedingTolerance": 5,
             "guidanceLanguage": GuidanceLanguage.english.rawValue,
             "voiceEngine": VoiceEngine.device.rawValue,
             "azureKey": "",
@@ -143,6 +156,12 @@ final class AppSettings {
         travelMode = TravelMode(rawValue: defaults.string(forKey: "travelMode") ?? "") ?? .driving
         autoSaveParking = defaults.bool(forKey: "autoSaveParking")
         buildings3D = defaults.bool(forKey: "buildings3D")
+        trafficFlow = defaults.bool(forKey: "trafficFlow")
+        trafficIncidents = defaults.bool(forKey: "trafficIncidents")
+        trafficWarnings = defaults.bool(forKey: "trafficWarnings")
+        hazardWarnings = defaults.bool(forKey: "hazardWarnings")
+        speedingWarning = defaults.bool(forKey: "speedingWarning")
+        speedingTolerance = defaults.integer(forKey: "speedingTolerance")
         guidanceLanguage = GuidanceLanguage(rawValue: defaults.string(forKey: "guidanceLanguage") ?? "") ?? .english
         voiceEngine = VoiceEngine(rawValue: defaults.string(forKey: "voiceEngine") ?? "") ?? .device
         azureKey = defaults.string(forKey: "azureKey") ?? ""

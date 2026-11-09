@@ -21,7 +21,8 @@ struct RouteLine: StyleLayerCollection {
     private var colors: (fill: UIColor, edge: UIColor) {
         switch kind {
         case .active:
-            (UIColor(red: 0.04, green: 0.52, blue: 1.0, alpha: 1), UIColor(red: 0.0, green: 0.27, blue: 0.68, alpha: 1))
+            // Bright cyan like TomTom AmiGO, with a deeper blue edge.
+            (UIColor(red: 0.04, green: 0.66, blue: 0.97, alpha: 1), UIColor(red: 0.0, green: 0.36, blue: 0.62, alpha: 1))
         case .travelled:
             (UIColor(white: 0.62, alpha: 0.9), UIColor(white: 0.38, alpha: 0.9))
         case .alternate:

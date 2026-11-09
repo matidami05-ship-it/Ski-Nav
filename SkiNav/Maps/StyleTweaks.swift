@@ -27,9 +27,9 @@ enum StyleTweaks {
 
     // MARK: Night palette for OpenMapTiles styles (the online map)
 
-    private static let land = "#1e2229"
-    private static let water = "#1c3049"
-    private static let casing = "#181b20"
+    private static let land = "#1f242b"
+    private static let water = "#3c5f97"
+    private static let casing = "#1a1e24"
 
     static func nightOnline(_ style: inout [String: Any]) {
         guard var layers = style["layers"] as? [[String: Any]] else { return }
@@ -50,9 +50,11 @@ enum StyleTweaks {
                     paint["fill-color"] = "#2d323b"
                     paint["fill-outline-color"] = "#3a404b"
                 } else if ["wood", "forest", "grass", "park", "golf", "pitch", "cemetery"].contains(where: { id.contains($0) || sourceLayer.contains($0) }) {
-                    paint["fill-color"] = "#21332a"
+                    paint["fill-color"] = "#24463d"
+                } else if ["commercial", "retail", "industrial"].contains(where: { id.contains($0) }) {
+                    paint["fill-color"] = "#3b2840"
                 } else if sourceLayer.contains("land") || sourceLayer == "aeroway" {
-                    paint["fill-color"] = "#262a31"
+                    paint["fill-color"] = "#232830"
                 }
                 paint.removeValue(forKey: "fill-pattern")
             case "fill-extrusion":
@@ -66,13 +68,16 @@ enum StyleTweaks {
                 } else if sourceLayer == "boundary" {
                     paint["line-color"] = "#6b7385"
                 }
+            case "raster", "hillshade":
+                paint["raster-opacity"] = type == "raster" ? 0.12 : nil
+                if type == "hillshade" { paint["hillshade-shadow-color"] = "#11151a"; paint["hillshade-highlight-color"] = "#2a3038" }
             case "symbol":
                 let text: String
                 switch sourceLayer {
-                case "transportation_name": text = "#d9dde4"
-                case "place": text = "#e1e4ea"
-                case "water_name": text = "#86a4c8"
-                default: text = "#b9bfca"
+                case "transportation_name": text = "#e6e9ee"
+                case "place": text = "#f4f6f9"
+                case "water_name": text = "#a9c2e6"
+                default: text = "#c9ced6"
                 }
                 paint["text-color"] = text
                 paint["text-halo-color"] = land
@@ -86,14 +91,14 @@ enum StyleTweaks {
         style["layers"] = layers
     }
 
-    /// Amber highways, gold main roads, blue-gray streets.
+    /// Clear gray roads, brighter as they get bigger (AmiGO style).
     private static func roadColor(_ id: String) -> String {
         if id.contains("casing") || id.contains("subtle") { return casing }
         if id.contains("rail") || id.contains("transit") { return "#5f6673" }
-        if id.contains("motorway") { return "#e8963a" }
-        if id.contains("trunk") || id.contains("primary") || id.contains("major") { return "#d4b465" }
-        if id.contains("secondary") || id.contains("tertiary") { return "#c4a65e" }
-        if id.contains("path") || id.contains("track") || id.contains("pedestrian") { return "#56607a" }
-        return "#7884a0"
+        if id.contains("motorway") { return "#95a0b4" }
+        if id.contains("trunk") || id.contains("primary") || id.contains("major") { return "#7f8a9e" }
+        if id.contains("secondary") || id.contains("tertiary") { return "#7a8598" }
+        if id.contains("path") || id.contains("track") || id.contains("pedestrian") { return "#4c5563" }
+        return "#5f697a"
     }
 }
