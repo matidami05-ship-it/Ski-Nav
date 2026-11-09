@@ -37,6 +37,9 @@ struct RootView: View {
         .onChange(of: model.settings.routingKey) { model.refreshRouting() }
         .onChange(of: model.settings.activeRegionID) { model.refreshRouting() }
         .onChange(of: model.settings.useOnlineWhenAvailable) { model.refreshRouting() }
+        .onChange(of: model.regions.alertsRevision) { model.refreshRouting() }
+        .onChange(of: model.settings.speedCameraAlerts) { model.updateRouteAlerts() }
+        .onChange(of: model.settings.railroadAlerts) { model.updateRouteAlerts() }
     }
 
     // MARK: Top

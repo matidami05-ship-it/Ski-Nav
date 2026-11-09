@@ -12,6 +12,10 @@ on the phone from a downloaded pack, so it keeps working with no signal.
   highways / ferries, automatic rerouting when you miss a turn
 - **Turn-by-turn** (Ferrostar): lane-style banners, voice prompts using the best installed
   iOS voice, speed limit sign, trip progress and ETA, landscape layout
+- **Lane guidance** arrows and a drawn **3D junction view** (road, lanes, exit sign) for
+  highway exits and forks
+- **Speed camera and railroad crossing alerts** on the route (banner, map icons, voice)
+- **Street view** (Apple Look Around) on places and dropped pins, when online
 - Home, Work, saved places, recents; long-press the map to drop a pin
 - **CarPlay**: destinations list, route preview, full navigation on the car screen
 - Online fallback (public Valhalla server) for trips outside your downloaded map
@@ -26,7 +30,11 @@ on the phone from a downloaded pack, so it keeps working with no signal.
 | `<region>.pmtiles` | the map | `pmtiles extract` from the daily Protomaps build |
 | `<region>-routing.tar` | routing graph | Valhalla 3.9.1 (`valhalla_build_tiles`) from Geofabrik OSM data |
 | `<region>-search.sqlite` | search index (FTS5) | `scripts/build_search_db.py` |
+| `<region>-alerts.json` | speed cameras + railroad crossings | `scripts/build_alerts.py` |
 | `regions.json` | the list the app shows | the workflow |
+
+`alerts.yml` ("Update road alerts") rebuilds only the small alerts files; phones fetch them
+without re-downloading the map.
 
 Run it from **Actions › Build offline maps › Run workflow** (it also runs monthly).
 Packs today: Wisconsin, and Wisconsin + Illinois. Add a region by adding an entry to

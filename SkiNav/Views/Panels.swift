@@ -158,6 +158,10 @@ struct PlaceCard: View {
                 CloseButton { model.closePlace() }
             }
 
+            if model.settings.streetView {
+                LookAroundSection(coordinate: place.coordinate)
+            }
+
             HStack(spacing: 10) {
                 Button {
                     model.drive(to: place)

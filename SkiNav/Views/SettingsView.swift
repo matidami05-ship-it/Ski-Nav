@@ -34,6 +34,23 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Toggle("Lane guidance", isOn: $settings.laneGuidance)
+                    Toggle("3D junction view at exits", isOn: $settings.junctionView)
+                    Toggle("Speed camera alerts", isOn: $settings.speedCameraAlerts)
+                    Toggle("Railroad crossing alerts", isOn: $settings.railroadAlerts)
+                } header: {
+                    Text("Driving")
+                } footer: {
+                    Text("Lanes, cameras and crossings come from OpenStreetMap and work offline. Wisconsin doesn’t allow speed cameras, so you’ll mostly see them in Illinois.")
+                }
+
+                Section {
+                    Toggle("Street view on places", isOn: $settings.streetView)
+                } footer: {
+                    Text("Apple Look Around imagery. Needs a connection.")
+                }
+
+                Section {
                     Toggle("Avoid tolls", isOn: $settings.avoidTolls)
                     Toggle("Avoid highways", isOn: $settings.avoidHighways)
                     Toggle("Avoid ferries", isOn: $settings.avoidFerries)

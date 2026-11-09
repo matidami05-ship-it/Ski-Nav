@@ -7,6 +7,7 @@ import Foundation
 import MapLibre
 import MapLibreSwiftUI
 import Observation
+import AVFoundation
 import UIKit
 
 /// How routes are being calculated right now.
@@ -56,7 +57,9 @@ final class AppModel {
     var screen: Screen = .browse
     var selectedPlace: Place?
     private(set) var routes: [Route] = []
-    var selectedRouteIndex = 0
+    var selectedRouteIndex = 0 {
+        didSet { if oldValue != selectedRouteIndex { updateRouteAlerts() } }
+    }
     private(set) var coreState: NavigationState?
     private(set) var isMuted = false
     private(set) var isLoadingRoutes = false
@@ -66,9 +69,19 @@ final class AppModel {
     private(set) var arrived = false
     var showDownloads = false
 
+    /// Speed cameras and railroad crossings on the route being previewed or driven.
+    private(set) var routeAlerts: [RouteAlert] = []
+    /// The next alert within warning distance while navigating, and how far away it is.
+    private(set) var upcomingAlert: RouteAlert?
+    private(set) var upcomingAlertDistance: Double = 0
+
     @ObservationIgnored private var cancellables = Set<AnyCancellable>()
     @ObservationIgnored private var coreCancellables = Set<AnyCancellable>()
     @ObservationIgnored private var builtKey = ""
+    @ObservationIgnored private var alertIndex: RoadAlertIndex?
+    @ObservationIgnored private var alertIndexKey = ""
+    @ObservationIgnored private var announcedAlerts = Set<String>()
+    @ObservationIgnored private var alertTask: Task<Void, Never>?
 
     private init() {
         let location = CoreLocationProvider(activityType: .automotiveNavigation, allowBackgroundLocationUpdates: true)
@@ -188,6 +201,7 @@ final class AppModel {
         let pack = regions.activePack(near: userLocation?.coordinate)
         activePack = pack
         search.useOfflineDatabase(pack.map { regions.fileURL($0, .search) })
+        loadAlertIndex(pack)
 
         let key = "\(pack?.id ?? "-")|\(pack?.version ?? "-")|\(settings.routingKey)|\(settings.useOnlineWhenAvailable)|\(regions.revision)"
         guard key != builtKey, screen != .navigating else { return }
@@ -203,11 +217,76 @@ final class AppModel {
         locationProvider.startUpdating()
     }
 
+    private func loadAlertIndex(_ pack: RegionPack?) {
+        let url = pack.flatMap { regions.alertsURL($0) }
+        let key = "\(url?.path ?? "-")|\(regions.alertsRevision)"
+        guard key != alertIndexKey else { return }
+        alertIndexKey = key
+        alertIndex = nil
+        guard let url else { return }
+        Task.detached(priority: .utility) {
+            let index = RoadAlertIndex(url: url)
+            await MainActor.run {
+                self.alertIndex = index
+                self.updateRouteAlerts()
+            }
+        }
+    }
+
+    /// Find the cameras and crossings on the route shown on the map.
+    func updateRouteAlerts() {
+        alertTask?.cancel()
+        let route = screen == .navigating ? core.route : selectedRoute
+        guard let route, let index = alertIndex,
+              settings.speedCameraAlerts || settings.railroadAlerts
+        else {
+            routeAlerts = []
+            return
+        }
+        let cameras = settings.speedCameraAlerts, crossings = settings.railroadAlerts
+        let geometry = route.geometry
+        alertTask = Task {
+            let found = await Task.detached(priority: .userInitiated) {
+                index.alerts(along: geometry, cameras: cameras, crossings: crossings)
+            }.value
+            if !Task.isCancelled { routeAlerts = found }
+        }
+    }
+
+    private func updateUpcomingAlert(_ state: NavigationState) {
+        guard let route = core.route, let progress = state.currentProgress, !routeAlerts.isEmpty else {
+            upcomingAlert = nil
+            return
+        }
+        let traveled = route.distance - progress.distanceRemaining
+        let next = routeAlerts.first { alert in
+            let ahead = alert.distanceAlong - traveled
+            return ahead > -15 && ahead <= alert.warnDistance
+        }
+        upcomingAlert = next
+        upcomingAlertDistance = next.map { max(0, $0.distanceAlong - traveled) } ?? 0
+        if let next, !announcedAlerts.contains(next.id) {
+            announcedAlerts.insert(next.id)
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            if !isMuted {
+                voice.speak(AVSpeechUtterance(string: next.spoken))
+            }
+        }
+    }
+
     private func bindCore() {
         coreCancellables.removeAll()
         core.$state
             .receive(on: DispatchQueue.main)
             .sink { [weak self] state in self?.handle(state) }
+            .store(in: &coreCancellables)
+        core.$route
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                // New route after a reroute: find its alerts.
+                guard let self, self.screen == .navigating else { return }
+                Task { @MainActor in self.updateRouteAlerts() }
+            }
             .store(in: &coreCancellables)
         core.spokenInstructionObserver.$isMuted
             .receive(on: DispatchQueue.main)
@@ -218,6 +297,7 @@ final class AppModel {
     private func handle(_ state: NavigationState?) {
         coreState = state
         guard screen == .navigating, let state else { return }
+        updateUpcomingAlert(state)
         if case .complete = state.tripState, !arrived {
             arrived = true
             Task { @MainActor in
@@ -288,6 +368,7 @@ final class AppModel {
             guard !found.isEmpty else { throw RoutingError.engine("No route found.") }
             routes = found
             fitCamera(to: found)
+            updateRouteAlerts()
         } catch {
             errorMessage = error.localizedDescription
             if routes.isEmpty { screen = .place }
@@ -341,6 +422,8 @@ final class AppModel {
             destination = selectedPlace
             if let place = selectedPlace { library.addRecent(place) }
             screen = .navigating
+            announcedAlerts = []
+            updateRouteAlerts()
             camera = .automotiveNavigation()
             UIApplication.shared.isIdleTimerDisabled = true
         } catch {
@@ -356,6 +439,8 @@ final class AppModel {
         routes = []
         selectedPlace = nil
         destination = nil
+        routeAlerts = []
+        upcomingAlert = nil
         locationProvider.startUpdating()
         recenter()
         refreshRouting()

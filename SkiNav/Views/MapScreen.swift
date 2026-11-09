@@ -35,6 +35,15 @@ struct MapScreen: View {
         let alternates = navigating ? [] : model.routes.enumerated().filter { $0.offset != model.selectedRouteIndex }
         let preview = navigating ? nil : model.selectedRoute
         let pin = model.selectedPlace ?? model.destination
+        let showAlerts = navigating || !model.routes.isEmpty
+        let cameras = showAlerts ? model.routeAlerts.filter(\.isCamera) : []
+        let crossings = showAlerts ? model.routeAlerts.filter { !$0.isCamera } : []
+        let instruction = model.coreState?.currentVisualInstruction
+        let toManeuver = model.coreState?.currentProgress?.distanceToNextManeuver
+        let junction = navigating && model.settings.junctionView
+            ? JunctionInfo.from(instruction, distance: toManeuver) : nil
+        let lanes = navigating && model.settings.laneGuidance && junction == nil
+            ? (instruction?.subContent?.laneInfo ?? instruction?.primaryContent.laneInfo) : nil
 
         DynamicallyOrientingNavigationView(
             styleURL: styleURL,
@@ -57,6 +66,26 @@ struct MapScreen: View {
                     identifier: "preview-route",
                     style: ActiveRouteStyle()
                 )
+            }
+            if !crossings.isEmpty {
+                SymbolStyleLayer(
+                    identifier: "rail-alerts",
+                    source: ShapeSource(identifier: "rail-alerts-source") {
+                        crossings.map { MLNPointFeature(coordinate: $0.coordinate) as MLNShape }
+                    }
+                )
+                .iconImage(AlertIcon.railroad)
+                .iconAllowsOverlap(true)
+            }
+            if !cameras.isEmpty {
+                SymbolStyleLayer(
+                    identifier: "camera-alerts",
+                    source: ShapeSource(identifier: "camera-alerts-source") {
+                        cameras.map { MLNPointFeature(coordinate: $0.coordinate) as MLNShape }
+                    }
+                )
+                .iconImage(AlertIcon.camera)
+                .iconAllowsOverlap(true)
             }
             if let pin {
                 let source = ShapeSource(identifier: "pin-source") {
@@ -87,6 +116,18 @@ struct MapScreen: View {
         .navigationViewInnerGrid(
             topCenter: {
                 if navigating {
+                    VStack(spacing: 8) {
+                        if let junction {
+                            JunctionView(info: junction, useMiles: model.settings.useMiles)
+                                .transition(.move(edge: .top).combined(with: .opacity))
+                        } else if let lanes, !lanes.isEmpty {
+                            LaneGuidanceView(lanes: lanes)
+                        }
+                        if let alert = model.upcomingAlert {
+                            AlertBanner(alert: alert, distance: model.upcomingAlertDistance, miles: model.settings.useMiles)
+                        }
+                    }
+                    .animation(.snappy, value: junction?.signText)
                     if model.arrived {
                         NavigationUIBanner(severity: .info) {
                             Text("You’ve arrived\(model.destination.map { " at \($0.name)" } ?? "")")
@@ -106,5 +147,57 @@ struct MapScreen: View {
             }
         }
         .ignoresSafeArea()
+    }
+}
+
+/// Map icons for cameras and crossings.
+enum AlertIcon {
+    static let camera = badge("camera.fill", fill: .systemOrange)
+    static let railroad = badge("train.side.front.car", fill: .systemYellow, glyph: .black)
+
+    private static func badge(_ symbol: String, fill: UIColor, glyph: UIColor = .white) -> UIImage {
+        let size = CGSize(width: 30, height: 30)
+        return UIGraphicsImageRenderer(size: size).image { _ in
+            let rect = CGRect(origin: .zero, size: size).insetBy(dx: 1.5, dy: 1.5)
+            UIColor.white.setFill()
+            UIBezierPath(ovalIn: rect).fill()
+            fill.setFill()
+            UIBezierPath(ovalIn: rect.insetBy(dx: 2.5, dy: 2.5)).fill()
+            let config = UIImage.SymbolConfiguration(pointSize: 13, weight: .bold)
+            if let image = UIImage(systemName: symbol, withConfiguration: config)?
+                .withTintColor(glyph, renderingMode: .alwaysOriginal)
+            {
+                image.draw(at: CGPoint(x: (size.width - image.size.width) / 2, y: (size.height - image.size.height) / 2))
+            }
+        }
+    }
+}
+
+/// "Speed camera ahead · 0.3 mi" under the turn banner.
+struct AlertBanner: View {
+    var alert: RouteAlert
+    var distance: Double
+    var miles: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: alert.isCamera ? "camera.fill" : "train.side.front.car")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(alert.isCamera ? .white : .black)
+                .frame(width: 34, height: 34)
+                .background(alert.isCamera ? Color.orange : Color.yellow, in: Circle())
+            VStack(alignment: .leading, spacing: 1) {
+                Text(alert.title(miles: miles))
+                    .font(.subheadline.weight(.bold))
+                Text(Fmt.distance(distance, miles: miles))
+                    .font(.caption.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .shadow(color: .black.opacity(0.2), radius: 6, y: 2)
     }
 }

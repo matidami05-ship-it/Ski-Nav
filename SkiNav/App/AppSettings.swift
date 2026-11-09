@@ -31,6 +31,11 @@ final class AppSettings {
     var showSpeedLimit: Bool { didSet { defaults.set(showSpeedLimit, forKey: "showSpeedLimit") } }
     /// Use online search and online routing when there is signal and no offline map covers the trip.
     var useOnlineWhenAvailable: Bool { didSet { defaults.set(useOnlineWhenAvailable, forKey: "useOnline") } }
+    var speedCameraAlerts: Bool { didSet { defaults.set(speedCameraAlerts, forKey: "speedCameraAlerts") } }
+    var railroadAlerts: Bool { didSet { defaults.set(railroadAlerts, forKey: "railroadAlerts") } }
+    var laneGuidance: Bool { didSet { defaults.set(laneGuidance, forKey: "laneGuidance") } }
+    var streetView: Bool { didSet { defaults.set(streetView, forKey: "streetView") } }
+    var junctionView: Bool { didSet { defaults.set(junctionView, forKey: "junctionView") } }
     var activeRegionID: String? { didSet { defaults.set(activeRegionID, forKey: "activeRegionID") } }
 
     private init() {
@@ -44,6 +49,11 @@ final class AppSettings {
             "speechRate": 0.52,
             "showSpeedLimit": true,
             "useOnline": true,
+            "speedCameraAlerts": true,
+            "railroadAlerts": true,
+            "laneGuidance": true,
+            "junctionView": true,
+            "streetView": true,
         ])
         useMiles = defaults.bool(forKey: "useMiles")
         avoidTolls = defaults.bool(forKey: "avoidTolls")
@@ -55,6 +65,11 @@ final class AppSettings {
         showSpeedLimit = defaults.bool(forKey: "showSpeedLimit")
         useOnlineWhenAvailable = defaults.bool(forKey: "useOnline")
         activeRegionID = defaults.string(forKey: "activeRegionID")
+        speedCameraAlerts = defaults.bool(forKey: "speedCameraAlerts")
+        railroadAlerts = defaults.bool(forKey: "railroadAlerts")
+        laneGuidance = defaults.bool(forKey: "laneGuidance")
+        junctionView = defaults.bool(forKey: "junctionView")
+        streetView = defaults.bool(forKey: "streetView")
     }
 
     /// Anything that changes how routes are calculated.

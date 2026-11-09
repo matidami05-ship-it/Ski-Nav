@@ -13,7 +13,9 @@ struct RegionPack: Codable, Identifiable, Hashable {
         var map: PackFile
         var routing: PackFile
         var search: PackFile
-        var all: [PackFile] { [map, routing, search] }
+        /// Speed cameras and railroad crossings. Small, and added to packs after the fact.
+        var alerts: PackFile?
+        var all: [PackFile] { [map, routing, search] + (alerts.map { [$0] } ?? []) }
     }
 
     var id: String
@@ -56,6 +58,8 @@ final class RegionStore {
     private(set) var isLoadingCatalog = false
     /// Bumps whenever the set of installed packs changes, so the map and router reload.
     private(set) var revision = 0
+    /// Bumps when a pack's road alerts file arrives.
+    private(set) var alertsRevision = 0
 
     let mapsDir: URL
 
@@ -127,6 +131,7 @@ final class RegionStore {
             catalog = packs
             catalogError = nil
             try? data.write(to: catalogCacheURL, options: .atomic)
+            await ensureAlerts()
         } catch {
             if catalog.isEmpty {
                 catalogError = "Couldn’t load the list of maps. Check your connection and try again."
@@ -151,6 +156,37 @@ final class RegionStore {
         case .search: pack.files.search
         }
         return regionDir(pack.id).appendingPathComponent(file.name)
+    }
+
+    func alertsURL(_ pack: RegionPack) -> URL? {
+        guard let file = pack.files.alerts else { return nil }
+        let url = regionDir(pack.id).appendingPathComponent(file.name)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    /// Packs downloaded before road alerts existed (or with an older alerts file) get just
+    /// the small alerts file, without re-downloading the map.
+    func ensureAlerts() async {
+        for (id, have) in installed {
+            guard let latest = catalog.first(where: { $0.id == id })?.files.alerts else { continue }
+            let local = regionDir(id).appendingPathComponent(latest.name)
+            let localSize = (try? FileManager.default.attributesOfItem(atPath: local.path)[.size] as? Int64) ?? nil
+            if have.files.alerts == latest, localSize == latest.size { continue }
+            guard let url = URL(string: Self.releaseBase + latest.name),
+                  let result = try? await URLSession.shared.download(from: url),
+                  (result.1 as? HTTPURLResponse)?.statusCode == 200
+            else { continue }
+            let tmp = result.0
+            try? FileManager.default.removeItem(at: local)
+            guard (try? FileManager.default.moveItem(at: tmp, to: local)) != nil else { continue }
+            var pack = have
+            pack.files.alerts = latest
+            installed[id] = pack
+            if let data = try? JSONEncoder().encode(pack) {
+                try? data.write(to: regionDir(id).appendingPathComponent("pack.json"), options: .atomic)
+            }
+            alertsRevision += 1
+        }
     }
 
     private func loadInstalled() {
