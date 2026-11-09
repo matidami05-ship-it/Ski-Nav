@@ -20,7 +20,8 @@ struct CarMapView: View {
         case .dark: true
         }
         CarPlayNavigationView(
-            styleURL: MapStyle.url(pack: app.activePack, dark: dark, store: app.regions),
+            styleURL: MapStyle.url(pack: app.activePack, dark: dark, store: app.regions,
+                                   navigating: app.screen == .navigating),
             camera: $car.camera,
             navigationCamera: .automotiveNavigation(zoom: 15),
             navigationState: app.coreState

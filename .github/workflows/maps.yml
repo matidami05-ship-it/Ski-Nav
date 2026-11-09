@@ -8,8 +8,8 @@ on:
   workflow_dispatch:
     inputs:
       region:
-        description: "Region id from data/regions.json, or 'all'"
-        default: all
+        description: "Region id from data/regions.json, 'missing' (not published yet) or 'all'"
+        default: missing
   schedule:
     - cron: "17 6 3 * *"
 
@@ -26,9 +26,13 @@ jobs:
       - id: pick
         env:
           WANT: ${{ github.event.inputs.region || 'all' }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           if [ "$WANT" = "all" ]; then
             echo "regions=$(jq -c '[.[].id]' data/regions.json)" >> "$GITHUB_OUTPUT"
+          elif [ "$WANT" = "missing" ]; then
+            gh release download maps -p regions.json -O published.json 2>/dev/null || echo '[]' > published.json
+            echo "regions=$(jq -c --slurpfile have published.json '[.[].id] - [$have[0][].id]' data/regions.json)" >> "$GITHUB_OUTPUT"
           else
             echo "regions=$(jq -c --arg id "$WANT" '[.[] | select(.id == $id) | .id]' data/regions.json)" >> "$GITHUB_OUTPUT"
           fi
@@ -39,7 +43,7 @@ jobs:
     timeout-minutes: 300
     strategy:
       fail-fast: false
-      max-parallel: 1
+      max-parallel: 4
       matrix:
         region: ${{ fromJson(needs.plan.outputs.regions) }}
     env:
@@ -79,9 +83,19 @@ jobs:
           fi
           ls -lh work
 
+      - name: Region bounding box
+        run: |
+          BBOX=$(jq -r --arg id "$REGION" '.[] | select(.id == $id) | .bbox // empty | map(tostring) | join(",")' data/regions.json)
+          if [ -z "$BBOX" ]; then
+            # Geofabrik extracts record their bounds in the file header; else scan the data.
+            BBOX=$(osmium fileinfo -g header.boxes work/region.osm.pbf | head -1 | tr -d '() ')
+            [ -n "$BBOX" ] || BBOX=$(osmium fileinfo -e -g data.bbox work/region.osm.pbf | tr -d '() ')
+          fi
+          echo "BBOX=$BBOX" >> "$GITHUB_ENV"
+          echo "Bounds: $BBOX"
+
       - name: Map tiles (Protomaps basemap cut to the region)
         run: |
-          BBOX=$(jq -r --arg id "$REGION" '.[] | select(.id == $id) | .bbox | map(tostring) | join(",")' data/regions.json)
           KEY=$(curl -fsSL https://build-metadata.protomaps.dev/builds.json | jq -r 'map(.key) | sort | last' || true)
           if [ -z "$KEY" ] || [ "$KEY" = "null" ]; then
             for d in 0 1 2 3 4 5 6 7 8 9 10; do
@@ -125,6 +139,20 @@ jobs:
       - name: Street detail for the 3D map
         run: bash scripts/build_detail_tiles.sh work/region.osm.pbf "out/$REGION-detail.pmtiles"
 
+      - name: Split files over GitHub's 2 GB limit
+        run: |
+          echo '{}' > parts.json
+          for f in out/*; do
+            if [ "$(stat -c %s "$f")" -gt 1990000000 ]; then
+              split -b 1900M -d -a 2 "$f" "$f.part"
+              n=$(ls "$f".part* | wc -l)
+              jq --arg k "$(basename "$f")" --argjson n "$n" --argjson s "$(stat -c %s "$f")" \
+                '.[$k] = {parts: $n, size: $s}' parts.json > p.json && mv p.json parts.json
+              rm "$f"
+            fi
+          done
+          cat parts.json
+
       - name: Publish to the "maps" release
         run: |
           gh release view maps >/dev/null 2>&1 || gh release create maps \
@@ -135,24 +163,42 @@ jobs:
 
       - name: Describe this pack
         run: |
-          size() { stat -c %s "$1"; }
+          size() { b=$(basename "$1"); jq -er --arg k "$b" '.[$k].size // empty' parts.json 2>/dev/null || stat -c %s "$1"; }
+          parts() { jq --arg k "$1" '.[$k].parts // 1' parts.json; }
           jq -n --arg id "$REGION" \
             --argjson region "$(jq --arg id "$REGION" '.[] | select(.id == $id)' data/regions.json)" \
             --arg version "$(date -u +%Y-%m-%d).${{ github.run_number }}" \
+            --argjson bbox "[$BBOX]" \
+            --argjson mapParts "$(parts $REGION.pmtiles)" \
+            --argjson routingParts "$(parts $REGION-routing.tar)" \
+            --argjson searchParts "$(parts $REGION-search.sqlite)" \
+            --argjson detailParts "$(parts $REGION-detail.pmtiles)" \
             --argjson map "$(size out/$REGION.pmtiles)" \
             --argjson routing "$(size out/$REGION-routing.tar)" \
             --argjson search "$(size out/$REGION-search.sqlite)" \
             --argjson alerts "$(size out/$REGION-alerts.json)" \
             --argjson detail "$(size out/$REGION-detail.pmtiles)" \
-            '{id: $id, name: $region.name, bbox: $region.bbox, version: $version,
+            '{id: $id, name: $region.name, bbox: $bbox, version: $version,
               files: {
-                map: {name: ($id + ".pmtiles"), size: $map},
-                routing: {name: ($id + "-routing.tar"), size: $routing},
-                search: {name: ($id + "-search.sqlite"), size: $search},
+                map: {name: ($id + ".pmtiles"), size: $map, parts: $mapParts},
+                routing: {name: ($id + "-routing.tar"), size: $routing, parts: $routingParts},
+                search: {name: ($id + "-search.sqlite"), size: $search, parts: $searchParts},
                 alerts: {name: ($id + "-alerts.json"), size: $alerts},
-                detail: {name: ($id + "-detail.pmtiles"), size: $detail}
+                detail: {name: ($id + "-detail.pmtiles"), size: $detail, parts: $detailParts}
               }}' > "pack-$REGION.json"
           cat "pack-$REGION.json"
+
+      - name: Add this pack to the published list right away
+        run: |
+          for attempt in 1 2 3; do
+            gh release download maps -p regions.json -O current.json --clobber 2>/dev/null || echo '[]' > current.json
+            jq --slurpfile p "pack-$REGION.json" --slurpfile order data/regions.json '
+              ([.[] | select(.id != $p[0].id)] + $p) as $all
+              | [ $order[0][] | .id as $id | ([ $all[] | select(.id == $id) ] | last) | select(. != null) ]
+            ' current.json > regions.json
+            gh release upload maps regions.json --clobber && break
+            sleep $((attempt * 10))
+          done
 
       - uses: actions/upload-artifact@v4
         with:

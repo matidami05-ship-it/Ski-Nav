@@ -28,6 +28,8 @@ on the phone from a downloaded pack, so it keeps working with no signal.
   navigation** back to the car or anywhere
 - Home, Work, saved places, recents; long-press the map to drop a pin
 - **CarPlay**: destinations list, route preview, full navigation on the car screen
+- **Live traffic & satellite** (optional, free TomTom key): Explore / Driving / Satellite map
+  modes, traffic colored on roads, incident icons, traffic-adjusted arrival times
 - Online fallback (public Valhalla server) for trips outside your downloaded map
 
 ## How the offline maps work
@@ -47,8 +49,11 @@ on the phone from a downloaded pack, so it keeps working with no signal.
 without re-downloading the map.
 
 Run it from **Actions › Build offline maps › Run workflow** (it also runs monthly).
-Packs today: Wisconsin, and Wisconsin + Illinois. Add a region by adding an entry to
-`data/regions.json` (Geofabrik extract paths and a bounding box).
+Packs: every US state, DC and Puerto Rico (California in North/South halves), plus
+Wisconsin + Illinois. Run with `missing` to build only packs not published yet, or `all`
+(monthly). Add a region by adding an entry to `data/regions.json` (Geofabrik extract paths;
+the bounding box is optional and read from the data). Files over 2 GB are published in parts
+and joined on the phone.
 
 The app downloads from
 `https://github.com/matidami05-ship-it/Ski-Nav/releases/download/maps/…`, so the repository

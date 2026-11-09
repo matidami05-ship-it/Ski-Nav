@@ -22,6 +22,19 @@ enum TravelMode: String, CaseIterable, Identifiable {
     var profile: String { self == .driving ? "auto" : "pedestrian" }
 }
 
+/// Apple-style map modes.
+enum MapMode: String, CaseIterable, Identifiable {
+    case explore, driving, satellite
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .explore: "Explore"
+        case .driving: "Driving"
+        case .satellite: "Satellite"
+        }
+    }
+}
+
 /// User preferences, saved in UserDefaults.
 @MainActor
 @Observable
@@ -45,6 +58,11 @@ final class AppSettings {
     var laneGuidance: Bool { didSet { defaults.set(laneGuidance, forKey: "laneGuidance") } }
     var streetView: Bool { didSet { defaults.set(streetView, forKey: "streetView") } }
     var junctionView: Bool { didSet { defaults.set(junctionView, forKey: "junctionView") } }
+    var mapMode: MapMode { didSet { defaults.set(mapMode.rawValue, forKey: "mapMode") } }
+    /// Free key from developer.tomtom.com, for live traffic and satellite imagery.
+    var tomtomKey: String { didSet { defaults.set(tomtomKey, forKey: "tomtomKey") } }
+    /// Show traffic while navigating even in Explore mode, like Apple Maps.
+    var trafficWhileNavigating: Bool { didSet { defaults.set(trafficWhileNavigating, forKey: "trafficNav") } }
     var buildings3D: Bool { didSet { defaults.set(buildings3D, forKey: "buildings3D") } }
     var streetDetail: Bool { didSet { defaults.set(streetDetail, forKey: "streetDetail") } }
     /// Free-driving map tilted in 3D and turning with you.
@@ -73,6 +91,9 @@ final class AppSettings {
             "travelMode": TravelMode.driving.rawValue,
             "autoSaveParking": true,
             "buildings3D": true,
+            "mapMode": MapMode.explore.rawValue,
+            "tomtomKey": "",
+            "trafficNav": true,
             "streetDetail": true,
             "map3D": false,
         ])
@@ -94,9 +115,14 @@ final class AppSettings {
         travelMode = TravelMode(rawValue: defaults.string(forKey: "travelMode") ?? "") ?? .driving
         autoSaveParking = defaults.bool(forKey: "autoSaveParking")
         buildings3D = defaults.bool(forKey: "buildings3D")
+        mapMode = MapMode(rawValue: defaults.string(forKey: "mapMode") ?? "") ?? .explore
+        tomtomKey = defaults.string(forKey: "tomtomKey") ?? ""
+        trafficWhileNavigating = defaults.bool(forKey: "trafficNav")
         streetDetail = defaults.bool(forKey: "streetDetail")
         map3D = defaults.bool(forKey: "map3D")
     }
+
+    var hasTrafficKey: Bool { !tomtomKey.trimmingCharacters(in: .whitespaces).isEmpty }
 
     /// Anything that changes how routes are calculated.
     var routingKey: String {

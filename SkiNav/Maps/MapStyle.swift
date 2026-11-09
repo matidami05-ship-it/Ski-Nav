@@ -4,7 +4,8 @@ import Foundation
 ///
 /// With an offline pack installed, the bundled Protomaps style is pointed at the pack's
 /// .pmtiles file and the bundled fonts and icons, so the map needs no connection at all.
-/// Without one, a free online style (OpenFreeMap) is used.
+/// Without one, a free online style (OpenFreeMap) is used. On top of either come the
+/// optional extras: 3D buildings, street detail, live traffic and satellite imagery.
 enum MapStyle {
     static let onlineLight = URL(string: "https://tiles.openfreemap.org/styles/liberty")!
     static let onlineDark = URL(string: "https://tiles.openfreemap.org/styles/dark")!
@@ -12,47 +13,91 @@ enum MapStyle {
     private static var cache: [String: URL] = [:]
 
     @MainActor
-    static func url(pack: RegionPack?, dark: Bool, store: RegionStore) -> URL {
-        guard let pack else { return dark ? onlineDark : onlineLight }
-        let flavor = dark ? "dark" : "light"
+    static func url(pack: RegionPack?, dark: Bool, store: RegionStore, navigating: Bool = false) -> URL {
         let settings = AppSettings.shared
-        let detail = settings.streetDetail ? store.detailURL(pack) : nil
-        let key = "\(pack.id)-\(pack.version)-\(flavor)-\(detail != nil ? "d" : "")\(settings.buildings3D ? "b" : "")"
-        if let cached = cache[key], FileManager.default.fileExists(atPath: cached.path) { return cached }
+        let flavor = dark ? "dark" : "light"
+        let key = settings.tomtomKey.trimmingCharacters(in: .whitespaces)
+        let satellite = !key.isEmpty && settings.mapMode == .satellite
+        let traffic = !key.isEmpty && (settings.mapMode != .explore || (navigating && settings.trafficWhileNavigating))
+        let detail = pack.flatMap { settings.streetDetail ? store.detailURL($0) : nil }
+        let buildings = settings.buildings3D && pack != nil
 
+        let cacheKey = [
+            pack.map { "\($0.id)-\($0.version)" } ?? "online", flavor,
+            detail != nil ? "d" : "", buildings ? "b" : "", traffic ? "t" : "", satellite ? "s" : "",
+            String(key.utf8.reduce(UInt32(5381)) { ($0 &* 33) &+ UInt32($1) } % 100_000),
+        ].joined(separator: "-")
+        if let cached = cache[cacheKey], FileManager.default.fileExists(atPath: cached.path) { return cached }
+
+        let fallback = dark ? onlineDark : onlineLight
+        guard var text = template(pack: pack, flavor: flavor, store: store) else { return fallback }
+
+        if detail != nil || buildings || traffic || satellite,
+           let data = text.data(using: .utf8),
+           var json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        {
+            if detail != nil || buildings {
+                StreetDetailStyle.apply(to: &json, detailURL: detail.map(trimmed), dark: dark, buildings: buildings)
+            }
+            if traffic || satellite {
+                TrafficStyle.apply(to: &json, key: key, traffic: traffic, satellite: satellite, dark: dark)
+            }
+            if let out = try? JSONSerialization.data(withJSONObject: json),
+               let s = String(data: out, encoding: .utf8)
+            {
+                text = s
+            }
+        } else if pack == nil {
+            return fallback // plain online style: just load it by URL
+        }
+
+        let out = store.mapsDir.appendingPathComponent("style-\(cacheKey).json")
+        do {
+            try text.write(to: out, atomically: true, encoding: .utf8)
+        } catch {
+            return fallback
+        }
+        cache[cacheKey] = out
+        return out
+    }
+
+    /// The style JSON before extras: the bundled offline style filled in, or a saved copy of
+    /// the online style.
+    @MainActor
+    private static func template(pack: RegionPack?, flavor: String, store: RegionStore) -> String? {
+        guard let pack else {
+            return try? String(contentsOf: onlineCopy(flavor, store: store), encoding: .utf8)
+        }
         guard let assets = Bundle.main.resourceURL?.appendingPathComponent("MapAssets", isDirectory: true),
               let template = try? String(
                   contentsOf: assets.appendingPathComponent("styles/\(flavor).json"), encoding: .utf8
               )
-        else { return dark ? onlineDark : onlineLight }
-
-        var style = template
+        else { return nil }
+        return template
             .replacingOccurrences(of: "{{PMTILES}}", with: trimmed(store.fileURL(pack, .map)))
             .replacingOccurrences(of: "{{GLYPHS}}", with: trimmed(assets.appendingPathComponent("fonts", isDirectory: true)))
             .replacingOccurrences(of: "{{SPRITES}}", with: trimmed(assets.appendingPathComponent("sprites", isDirectory: true)))
+    }
 
-        // 3D buildings and street detail (lanes, crosswalks, sidewalks, rail).
-        if detail != nil || settings.buildings3D,
-           let data = style.data(using: .utf8),
-           var json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-        {
-            StreetDetailStyle.apply(to: &json, detailURL: detail.map(trimmed), dark: dark,
-                                    buildings: settings.buildings3D)
-            if let out = try? JSONSerialization.data(withJSONObject: json),
-               let text = String(data: out, encoding: .utf8)
+    @MainActor
+    private static func onlineCopy(_ flavor: String, store: RegionStore) -> URL {
+        store.mapsDir.appendingPathComponent("online-\(flavor).json")
+    }
+
+    /// Keep a copy of the online styles so traffic and satellite can be added to them too
+    /// before any offline map is downloaded.
+    @MainActor
+    static func saveOnlineStyles(store: RegionStore) async {
+        for (flavor, url) in [("light", onlineLight), ("dark", onlineDark)] {
+            let dest = onlineCopy(flavor, store: store)
+            if FileManager.default.fileExists(atPath: dest.path) { continue }
+            if let result = try? await URLSession.shared.data(from: url),
+               (result.1 as? HTTPURLResponse)?.statusCode == 200,
+               (try? JSONSerialization.jsonObject(with: result.0)) != nil
             {
-                style = text
+                try? result.0.write(to: dest, options: .atomic)
             }
         }
-
-        let out = store.mapsDir.appendingPathComponent("style-\(key).json")
-        do {
-            try style.write(to: out, atomically: true, encoding: .utf8)
-        } catch {
-            return dark ? onlineDark : onlineLight
-        }
-        cache[key] = out
-        return out
     }
 
     /// file:///path with no trailing slash.

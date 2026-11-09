@@ -4,6 +4,7 @@ struct RootView: View {
     @Bindable var model: AppModel
     @State private var showSearch = false
     @State private var showSettings = false
+    @State private var showMapModes = false
 
     var body: some View {
         ZStack {
@@ -28,6 +29,9 @@ struct RootView: View {
                 model.showNearby(category)
             })
             .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showMapModes) {
+            MapModesSheet(model: model)
         }
         .sheet(isPresented: $showSettings) {
             SettingsView(model: model)
@@ -70,6 +74,9 @@ struct RootView: View {
             Spacer()
             VStack(spacing: 0) {
                 MapButton(systemImage: "gearshape.fill") { showSettings = true }
+                Divider().frame(width: 44)
+                MapButton(systemImage: model.settings.mapMode == .satellite ? "globe.americas.fill"
+                    : model.settings.mapMode == .driving ? "car.fill" : "map.fill") { showMapModes = true }
                 Divider().frame(width: 44)
                 Button { model.toggle3D() } label: {
                     Text(model.settings.map3D ? "2D" : "3D")

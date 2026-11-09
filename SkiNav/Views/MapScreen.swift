@@ -30,7 +30,8 @@ struct MapScreen: View {
     }
 
     var body: some View {
-        let styleURL = MapStyle.url(pack: model.activePack, dark: isDark, store: model.regions)
+        let styleURL = MapStyle.url(pack: model.activePack, dark: isDark, store: model.regions,
+                                    navigating: model.screen == .navigating)
         let navigating = model.screen == .navigating
         let alternates = navigating ? [] : model.routes.enumerated().filter { $0.offset != model.selectedRouteIndex }
         let preview = navigating ? nil : model.selectedRoute
@@ -139,7 +140,9 @@ struct MapScreen: View {
             controller.mapView.showsUserLocation = true
             // Icons used by the 3D street detail layers.
             if let style = controller.mapView.style {
-                for (name, image) in StreetDetailStyle.images where style.image(forName: name) == nil {
+                for (name, image) in StreetDetailStyle.images.merging(TrafficStyle.images, uniquingKeysWith: { a, _ in a })
+                    where style.image(forName: name) == nil
+                {
                     style.setImage(image, forName: name)
                 }
             }
@@ -162,6 +165,23 @@ struct MapScreen: View {
                                 .transition(.move(edge: .top).combined(with: .opacity))
                         } else if let lanes, !lanes.isEmpty {
                             LaneGuidanceView(lanes: lanes)
+                        }
+                        if let traffic = model.navTraffic, traffic.isNoticeable {
+                            HStack(spacing: 8) {
+                                Image(systemName: "car.2.fill")
+                                    .foregroundStyle(.white)
+                                    .frame(width: 30, height: 30)
+                                    .background(traffic.isHeavy ? Color.red : Color.orange, in: Circle())
+                                Text(traffic.isHeavy ? "Heavy traffic ahead" : "Traffic ahead")
+                                    .font(.subheadline.weight(.bold))
+                                Text("+\(Fmt.duration(traffic.delay)) · arrive \(Fmt.arrival(after: traffic.travelTime))")
+                                    .font(.caption.weight(.semibold).monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                                Spacer(minLength: 0)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                         }
                         if let alert = model.upcomingAlert {
                             AlertBanner(alert: alert, distance: model.upcomingAlertDistance, miles: model.settings.useMiles)

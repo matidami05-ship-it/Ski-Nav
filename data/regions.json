@@ -1,14 +1,399 @@
 [
   {
+    "id": "alabama",
+    "name": "Alabama",
+    "extracts": [
+      "north-america/us/alabama"
+    ]
+  },
+  {
+    "id": "alaska",
+    "name": "Alaska",
+    "extracts": [
+      "north-america/us/alaska"
+    ],
+    "bbox": [
+      -170.0,
+      51.0,
+      -129.9,
+      71.5
+    ]
+  },
+  {
+    "id": "arizona",
+    "name": "Arizona",
+    "extracts": [
+      "north-america/us/arizona"
+    ]
+  },
+  {
+    "id": "arkansas",
+    "name": "Arkansas",
+    "extracts": [
+      "north-america/us/arkansas"
+    ]
+  },
+  {
+    "id": "california-north",
+    "name": "California (North)",
+    "extracts": [
+      "north-america/us/california/norcal"
+    ]
+  },
+  {
+    "id": "california-south",
+    "name": "California (South)",
+    "extracts": [
+      "north-america/us/california/socal"
+    ]
+  },
+  {
+    "id": "colorado",
+    "name": "Colorado",
+    "extracts": [
+      "north-america/us/colorado"
+    ]
+  },
+  {
+    "id": "connecticut",
+    "name": "Connecticut",
+    "extracts": [
+      "north-america/us/connecticut"
+    ]
+  },
+  {
+    "id": "delaware",
+    "name": "Delaware",
+    "extracts": [
+      "north-america/us/delaware"
+    ]
+  },
+  {
+    "id": "district-of-columbia",
+    "name": "District of Columbia",
+    "extracts": [
+      "north-america/us/district-of-columbia"
+    ]
+  },
+  {
+    "id": "florida",
+    "name": "Florida",
+    "extracts": [
+      "north-america/us/florida"
+    ]
+  },
+  {
+    "id": "georgia",
+    "name": "Georgia",
+    "extracts": [
+      "north-america/us/georgia"
+    ]
+  },
+  {
+    "id": "hawaii",
+    "name": "Hawaii",
+    "extracts": [
+      "north-america/us/hawaii"
+    ]
+  },
+  {
+    "id": "idaho",
+    "name": "Idaho",
+    "extracts": [
+      "north-america/us/idaho"
+    ]
+  },
+  {
+    "id": "illinois",
+    "name": "Illinois",
+    "extracts": [
+      "north-america/us/illinois"
+    ]
+  },
+  {
+    "id": "indiana",
+    "name": "Indiana",
+    "extracts": [
+      "north-america/us/indiana"
+    ]
+  },
+  {
+    "id": "iowa",
+    "name": "Iowa",
+    "extracts": [
+      "north-america/us/iowa"
+    ]
+  },
+  {
+    "id": "kansas",
+    "name": "Kansas",
+    "extracts": [
+      "north-america/us/kansas"
+    ]
+  },
+  {
+    "id": "kentucky",
+    "name": "Kentucky",
+    "extracts": [
+      "north-america/us/kentucky"
+    ]
+  },
+  {
+    "id": "louisiana",
+    "name": "Louisiana",
+    "extracts": [
+      "north-america/us/louisiana"
+    ]
+  },
+  {
+    "id": "maine",
+    "name": "Maine",
+    "extracts": [
+      "north-america/us/maine"
+    ]
+  },
+  {
+    "id": "maryland",
+    "name": "Maryland",
+    "extracts": [
+      "north-america/us/maryland"
+    ]
+  },
+  {
+    "id": "massachusetts",
+    "name": "Massachusetts",
+    "extracts": [
+      "north-america/us/massachusetts"
+    ]
+  },
+  {
+    "id": "michigan",
+    "name": "Michigan",
+    "extracts": [
+      "north-america/us/michigan"
+    ]
+  },
+  {
+    "id": "minnesota",
+    "name": "Minnesota",
+    "extracts": [
+      "north-america/us/minnesota"
+    ]
+  },
+  {
+    "id": "mississippi",
+    "name": "Mississippi",
+    "extracts": [
+      "north-america/us/mississippi"
+    ]
+  },
+  {
+    "id": "missouri",
+    "name": "Missouri",
+    "extracts": [
+      "north-america/us/missouri"
+    ]
+  },
+  {
+    "id": "montana",
+    "name": "Montana",
+    "extracts": [
+      "north-america/us/montana"
+    ]
+  },
+  {
+    "id": "nebraska",
+    "name": "Nebraska",
+    "extracts": [
+      "north-america/us/nebraska"
+    ]
+  },
+  {
+    "id": "nevada",
+    "name": "Nevada",
+    "extracts": [
+      "north-america/us/nevada"
+    ]
+  },
+  {
+    "id": "new-hampshire",
+    "name": "New Hampshire",
+    "extracts": [
+      "north-america/us/new-hampshire"
+    ]
+  },
+  {
+    "id": "new-jersey",
+    "name": "New Jersey",
+    "extracts": [
+      "north-america/us/new-jersey"
+    ]
+  },
+  {
+    "id": "new-mexico",
+    "name": "New Mexico",
+    "extracts": [
+      "north-america/us/new-mexico"
+    ]
+  },
+  {
+    "id": "new-york",
+    "name": "New York",
+    "extracts": [
+      "north-america/us/new-york"
+    ]
+  },
+  {
+    "id": "north-carolina",
+    "name": "North Carolina",
+    "extracts": [
+      "north-america/us/north-carolina"
+    ]
+  },
+  {
+    "id": "north-dakota",
+    "name": "North Dakota",
+    "extracts": [
+      "north-america/us/north-dakota"
+    ]
+  },
+  {
+    "id": "ohio",
+    "name": "Ohio",
+    "extracts": [
+      "north-america/us/ohio"
+    ]
+  },
+  {
+    "id": "oklahoma",
+    "name": "Oklahoma",
+    "extracts": [
+      "north-america/us/oklahoma"
+    ]
+  },
+  {
+    "id": "oregon",
+    "name": "Oregon",
+    "extracts": [
+      "north-america/us/oregon"
+    ]
+  },
+  {
+    "id": "pennsylvania",
+    "name": "Pennsylvania",
+    "extracts": [
+      "north-america/us/pennsylvania"
+    ]
+  },
+  {
+    "id": "puerto-rico",
+    "name": "Puerto Rico",
+    "extracts": [
+      "north-america/us/puerto-rico"
+    ]
+  },
+  {
+    "id": "rhode-island",
+    "name": "Rhode Island",
+    "extracts": [
+      "north-america/us/rhode-island"
+    ]
+  },
+  {
+    "id": "south-carolina",
+    "name": "South Carolina",
+    "extracts": [
+      "north-america/us/south-carolina"
+    ]
+  },
+  {
+    "id": "south-dakota",
+    "name": "South Dakota",
+    "extracts": [
+      "north-america/us/south-dakota"
+    ]
+  },
+  {
+    "id": "tennessee",
+    "name": "Tennessee",
+    "extracts": [
+      "north-america/us/tennessee"
+    ]
+  },
+  {
+    "id": "texas",
+    "name": "Texas",
+    "extracts": [
+      "north-america/us/texas"
+    ]
+  },
+  {
+    "id": "utah",
+    "name": "Utah",
+    "extracts": [
+      "north-america/us/utah"
+    ]
+  },
+  {
+    "id": "vermont",
+    "name": "Vermont",
+    "extracts": [
+      "north-america/us/vermont"
+    ]
+  },
+  {
+    "id": "virginia",
+    "name": "Virginia",
+    "extracts": [
+      "north-america/us/virginia"
+    ]
+  },
+  {
+    "id": "washington",
+    "name": "Washington",
+    "extracts": [
+      "north-america/us/washington"
+    ]
+  },
+  {
+    "id": "west-virginia",
+    "name": "West Virginia",
+    "extracts": [
+      "north-america/us/west-virginia"
+    ]
+  },
+  {
     "id": "wisconsin",
     "name": "Wisconsin",
-    "extracts": ["north-america/us/wisconsin"],
-    "bbox": [-92.95, 42.45, -86.20, 47.35]
+    "extracts": [
+      "north-america/us/wisconsin"
+    ],
+    "bbox": [
+      -92.95,
+      42.45,
+      -86.2,
+      47.35
+    ]
   },
   {
     "id": "wisconsin-illinois",
     "name": "Wisconsin + Illinois",
-    "extracts": ["north-america/us/wisconsin", "north-america/us/illinois"],
-    "bbox": [-92.95, 36.95, -86.20, 47.35]
+    "extracts": [
+      "north-america/us/wisconsin",
+      "north-america/us/illinois"
+    ],
+    "bbox": [
+      -92.95,
+      36.95,
+      -86.2,
+      47.35
+    ]
+  },
+  {
+    "id": "wyoming",
+    "name": "Wyoming",
+    "extracts": [
+      "north-america/us/wyoming"
+    ]
   }
 ]

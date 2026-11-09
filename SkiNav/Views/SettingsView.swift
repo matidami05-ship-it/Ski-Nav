@@ -14,10 +14,22 @@ struct SettingsView: View {
                         DownloadsView(model: model)
                     } label: {
                         HStack {
-                            Label("Offline Maps", systemImage: "arrow.down.circle.fill")
+                            Label("Download Maps", systemImage: "arrow.down.circle.fill")
                             Spacer()
                             Text(model.regions.installed.isEmpty ? "None" : "\(model.regions.installed.count) downloaded")
                                 .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                Section {
+                    NavigationLink {
+                        TrafficKeyView()
+                    } label: {
+                        HStack {
+                            Label("Live Traffic & Satellite", systemImage: "car.rear.road.lane.dashed")
+                            Spacer()
+                            Text(settings.hasTrafficKey ? "On" : "Set up").foregroundStyle(.secondary)
                         }
                     }
                 }

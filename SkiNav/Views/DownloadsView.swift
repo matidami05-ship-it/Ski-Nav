@@ -5,6 +5,18 @@ struct DownloadsView: View {
     @Bindable private var settings = AppSettings.shared
     @Environment(\.dismiss) private var dismiss
     @State private var confirmDelete: RegionPack?
+    @State private var query = ""
+
+    private var nearYou: [RegionPack] {
+        guard let here = model.userLocation?.coordinate else { return [] }
+        return store.catalog.filter { $0.contains(here) }.sorted { $0.area < $1.area }
+    }
+
+    private var allPacks: [RegionPack] {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        let sorted = store.catalog.sorted { $0.name < $1.name }
+        return q.isEmpty ? sorted : sorted.filter { $0.name.localizedCaseInsensitiveContains(q) }
+    }
 
     private var store: RegionStore { model.regions }
 
@@ -23,6 +35,14 @@ struct DownloadsView: View {
                 }
             }
 
+            if query.isEmpty, !nearYou.isEmpty {
+                Section("Near You") {
+                    ForEach(nearYou) { pack in
+                        availableRow(pack)
+                    }
+                }
+            }
+
             Section {
                 if store.catalog.isEmpty {
                     if store.isLoadingCatalog {
@@ -32,16 +52,17 @@ struct DownloadsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                ForEach(store.catalog) { pack in
+                ForEach(allPacks) { pack in
                     availableRow(pack)
                 }
             } header: {
-                Text("Available")
+                Text("All States")
             } footer: {
-                Text("Downloads keep going in the background. Wi-Fi recommended; maps are rebuilt monthly from OpenStreetMap.")
+                Text("Each state includes the map, offline search, driving and walking directions, and road alerts. Downloads keep going in the background; Wi-Fi recommended. Maps are rebuilt monthly from OpenStreetMap. Trips crossing a state line route online when there's signal, or download a combined pack like Wisconsin + Illinois.")
             }
         }
-        .navigationTitle("Offline Maps")
+        .navigationTitle("Download Maps")
+        .searchable(text: $query, prompt: "Search states")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await store.refreshCatalog() }
         .task { await store.refreshCatalog() }

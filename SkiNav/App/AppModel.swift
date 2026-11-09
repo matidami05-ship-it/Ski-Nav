@@ -72,6 +72,11 @@ final class AppModel {
     private(set) var arrived = false
     var showDownloads = false
     var showTripPlanner = false
+
+    /// Live traffic for each route option (by index), and for the trip in progress.
+    private(set) var routeTraffic: [Int: TrafficInfo] = [:]
+    private(set) var navTraffic: TrafficInfo?
+    @ObservationIgnored private var trafficTask: Task<Void, Never>?
     var showAlongRoute = false
 
     /// The trip: stops in order, the last one is the destination.
@@ -133,6 +138,7 @@ final class AppModel {
         locationProvider.startUpdating()
         refreshRouting()
         Task { await regions.refreshCatalog() }
+        Task { await MapStyle.saveOnlineStyles(store: regions) }
     }
 
     // MARK: Routing engine
@@ -409,9 +415,65 @@ final class AppModel {
             fitCamera(to: found)
             updateRouteAlerts()
             updateStopETAs()
+            checkRouteTraffic()
         } catch {
             errorMessage = error.localizedDescription
             if routes.isEmpty { screen = stops.count > 1 ? .routes : .place }
+        }
+    }
+
+    // MARK: Traffic
+
+    private var canCheckTraffic: Bool {
+        settings.hasTrafficKey && !isWalking && Connectivity.shared.isOnline
+    }
+
+    /// Traffic delay for each route option in the preview.
+    private func checkRouteTraffic() {
+        routeTraffic = [:]
+        guard canCheckTraffic else { return }
+        let key = settings.tomtomKey.trimmingCharacters(in: .whitespaces)
+        let stopCoords = stops.map(\.coordinate)
+        for (index, route) in routes.prefix(3).enumerated() {
+            let geometry = route.geometry
+            Task {
+                if let info = await TrafficService.check(geometry: geometry, stops: stopCoords, key: key),
+                   routes.indices.contains(index), routes[index].geometry == geometry
+                {
+                    routeTraffic[index] = info
+                }
+            }
+        }
+    }
+
+    /// While navigating, re-check traffic on the road ahead every few minutes.
+    private func startTrafficUpdates() {
+        trafficTask?.cancel()
+        navTraffic = nil
+        guard settings.hasTrafficKey, !isWalking else { return }
+        trafficTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.checkNavTraffic()
+                try? await Task.sleep(nanoseconds: 240_000_000_000)
+            }
+        }
+    }
+
+    private func checkNavTraffic() async {
+        guard canCheckTraffic, screen == .navigating, let route = core.route, let here = userLocation else { return }
+        // The part of the route still ahead.
+        var nearest = 0, best = Double.infinity
+        for (i, c) in route.geometry.enumerated() {
+            let d = POIFinder.approxMeters(here.coordinate.latitude, here.coordinate.longitude, c.lat, c.lng)
+            if d < best { best = d; nearest = i }
+        }
+        let ahead = Array(route.geometry[nearest...])
+        let remainingStops = (coreState?.remainingWaypoints ?? []).map(\.coordinate.clLocationCoordinate2D)
+        let key = settings.tomtomKey.trimmingCharacters(in: .whitespaces)
+        if let info = await TrafficService.check(geometry: ahead, stops: remainingStops, key: key),
+           screen == .navigating
+        {
+            navTraffic = info
         }
     }
 
@@ -624,6 +686,7 @@ final class AppModel {
             screen = .navigating
             announcedAlerts = []
             updateRouteAlerts()
+            startTrafficUpdates()
             camera = navigationCamera
             UIApplication.shared.isIdleTimerDisabled = true
         } catch {
@@ -694,6 +757,8 @@ final class AppModel {
 
     func stopNavigation() {
         arrived = false
+        trafficTask?.cancel()
+        navTraffic = nil
         core.stopNavigation()
         UIApplication.shared.isIdleTimerDisabled = false
         screen = .browse

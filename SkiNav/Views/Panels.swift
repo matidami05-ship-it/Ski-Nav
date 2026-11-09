@@ -416,6 +416,13 @@ struct RoutesPanel: View {
         }
     }
 
+    private func trafficColor(_ info: TrafficInfo?) -> Color? {
+        guard let info else { return nil }
+        if info.isHeavy { return .red }
+        if info.isNoticeable { return .orange }
+        return nil
+    }
+
     /// "1 Kwik Trip 2:14 PM → 2 Home 2:40 PM", scrollable.
     private var stopsSummary: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -452,9 +459,16 @@ struct RoutesPanel: View {
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(Fmt.duration(route.duration))
-                        .font(.title3.weight(.bold))
-                        .foregroundStyle(selected ? Color.accentColor : .primary)
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(Fmt.duration(model.routeTraffic[index]?.travelTime ?? route.duration))
+                            .font(.title3.weight(.bold))
+                            .foregroundStyle(trafficColor(model.routeTraffic[index]) ?? (selected ? Color.accentColor : .primary))
+                        if let traffic = model.routeTraffic[index] {
+                            Text(traffic.isNoticeable ? "+\(Fmt.duration(traffic.delay)) traffic" : "light traffic")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(trafficColor(traffic) ?? .green)
+                        }
+                    }
                     Text([
                         Fmt.distance(route.distance, miles: model.settings.useMiles),
                         route.mainRoad.map { "via \($0)" },
@@ -468,7 +482,7 @@ struct RoutesPanel: View {
                     Text("Arrive")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text(Fmt.arrival(after: route.duration))
+                    Text(Fmt.arrival(after: model.routeTraffic[index]?.travelTime ?? route.duration))
                         .font(.subheadline.weight(.semibold).monospacedDigit())
                 }
             }

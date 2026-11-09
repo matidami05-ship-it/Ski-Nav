@@ -7,6 +7,13 @@ struct RegionPack: Codable, Identifiable, Hashable {
     struct PackFile: Codable, Hashable {
         var name: String
         var size: Int64
+        /// Files over GitHub's 2 GB limit are published in parts (name.part00, .part01, …).
+        var parts: Int?
+
+        var partNames: [String] {
+            guard let parts, parts > 1 else { return [name] }
+            return (0 ..< parts).map { name + String(format: ".part%02d", $0) }
+        }
     }
 
     struct Files: Codable, Hashable {
@@ -248,11 +255,13 @@ final class RegionStore {
         progress[pack.id] = 0
         written[pack.id] = [:]
         for file in pack.files.all {
-            let url = URL(string: Self.releaseBase + file.name)!
-            let task = session.downloadTask(with: url)
-            task.taskDescription = "\(pack.id)|\(file.name)"
-            task.countOfBytesClientExpectsToReceive = file.size
-            task.resume()
+            let names = file.partNames
+            for name in names {
+                let task = session.downloadTask(with: URL(string: Self.releaseBase + name)!)
+                task.taskDescription = "\(pack.id)|\(name)"
+                task.countOfBytesClientExpectsToReceive = file.size / Int64(names.count)
+                task.resume()
+            }
         }
     }
 
@@ -295,10 +304,44 @@ final class RegionStore {
         guard detailProgress[id] == nil, let file = detailAvailable(id) else { return }
         downloadErrors[id] = nil
         detailProgress[id] = 0
-        let task = session.downloadTask(with: URL(string: Self.releaseBase + file.name)!)
-        task.taskDescription = "\(id)\(Self.extraSuffix)|\(file.name)"
-        task.countOfBytesClientExpectsToReceive = file.size
-        task.resume()
+        let names = file.partNames
+        for name in names {
+            let task = session.downloadTask(with: URL(string: Self.releaseBase + name)!)
+            task.taskDescription = "\(id)\(Self.extraSuffix)|\(name)"
+            task.countOfBytesClientExpectsToReceive = file.size / Int64(names.count)
+            task.resume()
+        }
+    }
+
+    /// Joins downloaded parts into the full file, off the main thread.
+    private nonisolated static func assemble(_ file: RegionPack.PackFile, in dir: URL) async -> Bool {
+        let names = file.partNames
+        let dest = dir.appendingPathComponent(file.name)
+        guard names.count > 1 else { return FileManager.default.fileExists(atPath: dest.path) }
+        return await Task.detached(priority: .utility) {
+            let fm = FileManager.default
+            try? fm.removeItem(at: dest)
+            guard fm.createFile(atPath: dest.path, contents: nil),
+                  let out = try? FileHandle(forWritingTo: dest)
+            else { return false }
+            defer { try? out.close() }
+            for name in names {
+                let part = dir.appendingPathComponent(name)
+                guard let input = try? FileHandle(forReadingFrom: part) else { return false }
+                while let chunk = try? input.read(upToCount: 8 << 20), !chunk.isEmpty {
+                    out.write(chunk)
+                }
+                try? input.close()
+                try? fm.removeItem(at: part)
+            }
+            return true
+        }.value
+    }
+
+    private func partsPresent(_ file: RegionPack.PackFile, in dir: URL) -> Bool {
+        let fm = FileManager.default
+        return fm.fileExists(atPath: dir.appendingPathComponent(file.name).path)
+            || file.partNames.allSatisfy { fm.fileExists(atPath: dir.appendingPathComponent($0).path) }
     }
 
     func deleteDetail(_ id: String) {
@@ -317,21 +360,34 @@ final class RegionStore {
     }
 
     private func finishExtra(_ id: String) {
-        detailProgress[id] = nil
-        guard var pack = installed[id], let latest = catalog.first(where: { $0.id == id })?.files.detail,
-              FileManager.default.fileExists(atPath: regionDir(id).appendingPathComponent(latest.name).path)
+        guard let latest = catalog.first(where: { $0.id == id })?.files.detail,
+              partsPresent(latest, in: regionDir(id)), !finalizing.contains(id + Self.extraSuffix)
         else { return }
-        pack.files.detail = latest
-        installed[id] = pack
-        savePackInfo(pack)
-        detailRevision += 1
+        finalizing.insert(id + Self.extraSuffix)
+        Task {
+            let ok = await Self.assemble(latest, in: regionDir(id))
+            finalizing.remove(id + Self.extraSuffix)
+            detailProgress[id] = nil
+            guard ok, var pack = installed[id] else {
+                downloadErrors[id] = "Couldn’t finish the street detail download."
+                return
+            }
+            pack.files.detail = latest
+            installed[id] = pack
+            savePackInfo(pack)
+            detailRevision += 1
+        }
     }
+
+    @ObservationIgnored private var finalizing = Set<String>()
 
     private func updateProgress(region: String, file: String, bytes: Int64) {
         if region.hasSuffix(Self.extraSuffix) {
             let id = String(region.dropLast(Self.extraSuffix.count))
             let size = catalog.first(where: { $0.id == id })?.files.detail?.size ?? 1
-            detailProgress[id] = min(0.999, Double(bytes) / Double(max(size, 1)))
+            written[region, default: [:]][file] = bytes
+            let done = written[region, default: [:]].values.reduce(0, +)
+            detailProgress[id] = min(0.999, Double(done) / Double(max(size, 1)))
             return
         }
         guard let pack = pendingPack(region) ?? catalog.first(where: { $0.id == region }) else { return }
@@ -345,13 +401,26 @@ final class RegionStore {
             finishExtra(String(region.dropLast(Self.extraSuffix.count)))
             return
         }
-        guard let pack = pendingPack(region) else { return }
+        guard let pack = pendingPack(region), !finalizing.contains(region) else { return }
         let staging = stagingDir(region)
-        let ready = pack.files.all.allSatisfy {
-            FileManager.default.fileExists(atPath: staging.appendingPathComponent($0.name).path)
+        guard pack.files.all.allSatisfy({ partsPresent($0, in: staging) }) else { return }
+        finalizing.insert(region)
+        Task {
+            var ok = true
+            for file in pack.files.all {
+                if !(await Self.assemble(file, in: staging)) { ok = false }
+            }
+            finalizing.remove(region)
+            if ok {
+                install(pack, region: region)
+            } else {
+                fail(region: region, message: "Couldn’t finish the download. Please try again.")
+            }
         }
-        guard ready else { return }
+    }
 
+    private func install(_ pack: RegionPack, region: String) {
+        let staging = stagingDir(region)
         let fm = FileManager.default
         let dir = regionDir(region)
         for file in pack.files.all {
