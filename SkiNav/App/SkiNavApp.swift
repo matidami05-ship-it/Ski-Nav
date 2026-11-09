@@ -5,6 +5,11 @@ struct SkiNavApp: App {
     @State private var model = AppModel.shared
     @Environment(\.scenePhase) private var scenePhase
 
+    init() {
+        // Set up early so tapping a "Time to leave" notification works even from a cold start.
+        LeaveReminders.shared.activate()
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView(model: model)

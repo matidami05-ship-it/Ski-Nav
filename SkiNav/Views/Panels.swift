@@ -317,6 +317,7 @@ struct RoutesPanel: View {
     @Bindable var model: AppModel
     @Bindable private var settings = AppSettings.shared
     @State private var showOptions = false
+    @State private var showTimePlan = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -400,18 +401,38 @@ struct RoutesPanel: View {
                     }
                 }
 
-                Button {
-                    model.startNavigation()
-                } label: {
-                    Text("Go")
-                        .font(.title3.weight(.bold))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 52)
+                HStack(spacing: 10) {
+                    Button {
+                        showTimePlan = true
+                    } label: {
+                        VStack(spacing: 1) {
+                            Image(systemName: LeaveReminders.shared.pending == nil ? "clock" : "bell.badge.fill")
+                                .font(.headline)
+                            Text("Leave").font(.caption2.weight(.semibold))
+                        }
+                        .frame(width: 60, height: 52)
+                    }
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.roundedRectangle(radius: 14))
+                    .disabled(model.selectedRoute == nil)
+                    .accessibilityLabel("Plan when to leave")
+
+                    Button {
+                        model.startNavigation()
+                    } label: {
+                        Text("Go")
+                            .font(.title3.weight(.bold))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .buttonBorderShape(.roundedRectangle(radius: 14))
+                    .tint(.green)
+                    .disabled(model.selectedRoute == nil)
                 }
-                .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.roundedRectangle(radius: 14))
-                .tint(.green)
-                .disabled(model.selectedRoute == nil)
+                .sheet(isPresented: $showTimePlan) {
+                    TimePlanSheet(model: model)
+                }
             }
         }
     }

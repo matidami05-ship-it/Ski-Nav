@@ -135,6 +135,7 @@ final class AppModel {
 
     /// Called once the UI is up.
     func start() {
+        LeaveReminders.shared.activate()
         locationProvider.startUpdating()
         refreshRouting()
         Task { await regions.refreshCatalog() }
