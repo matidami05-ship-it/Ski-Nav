@@ -17,7 +17,7 @@ packages:
     from: 0.26.1
   MapLibreNative:
     url: https://github.com/maplibre/maplibre-gl-native-distribution
-    from: 7.0.0
+    from: 6.21.2
   ValhallaMobile:
     url: https://github.com/Rallista/valhalla-mobile
     from: 0.6.4
