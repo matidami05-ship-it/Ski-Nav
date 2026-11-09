@@ -1,0 +1,173 @@
+name: Build offline maps
+
+# Builds the downloadable offline packs (map, routing, search) for each region in
+# data/regions.json and publishes them on the "maps" release, which the app downloads from.
+# Runs on demand and once a month so the maps stay current.
+
+on:
+  workflow_dispatch:
+    inputs:
+      region:
+        description: "Region id from data/regions.json, or 'all'"
+        default: all
+  schedule:
+    - cron: "17 6 3 * *"
+
+permissions:
+  contents: write
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      regions: ${{ steps.pick.outputs.regions }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: pick
+        env:
+          WANT: ${{ github.event.inputs.region || 'all' }}
+        run: |
+          if [ "$WANT" = "all" ]; then
+            echo "regions=$(jq -c '[.[].id]' data/regions.json)" >> "$GITHUB_OUTPUT"
+          else
+            echo "regions=$(jq -c --arg id "$WANT" '[.[] | select(.id == $id) | .id]' data/regions.json)" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        region: ${{ fromJson(needs.plan.outputs.regions) }}
+    env:
+      REGION: ${{ matrix.region }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          df -h /
+
+      - name: Install tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q osmium-tool
+          pip install --quiet osmium
+          gh release download -R protomaps/go-pmtiles -p '*Linux_x86_64.tar.gz' -O pmtiles.tgz
+          tar xzf pmtiles.tgz pmtiles && sudo mv pmtiles /usr/local/bin/
+          pmtiles version || true
+
+      - name: Download OpenStreetMap data
+        run: |
+          mkdir -p work out
+          i=0
+          for e in $(jq -r --arg id "$REGION" '.[] | select(.id == $id) | .extracts[]' data/regions.json); do
+            curl -fsSL --retry 3 -o "work/part$i.osm.pbf" "https://download.geofabrik.de/$e-latest.osm.pbf"
+            i=$((i+1))
+          done
+          if [ "$i" -gt 1 ]; then
+            osmium merge work/part*.osm.pbf -o work/region.osm.pbf
+            rm work/part*.osm.pbf
+          else
+            mv work/part0.osm.pbf work/region.osm.pbf
+          fi
+          ls -lh work
+
+      - name: Map tiles (Protomaps basemap cut to the region)
+        run: |
+          BBOX=$(jq -r --arg id "$REGION" '.[] | select(.id == $id) | .bbox | map(tostring) | join(",")' data/regions.json)
+          KEY=$(curl -fsSL https://build-metadata.protomaps.dev/builds.json | jq -r 'map(.key) | sort | last' || true)
+          if [ -z "$KEY" ] || [ "$KEY" = "null" ]; then
+            for d in 0 1 2 3 4 5 6 7 8 9 10; do
+              K="$(date -u -d "-$d day" +%Y%m%d).pmtiles"
+              if curl -fsI "https://build.protomaps.com/$K" >/dev/null; then KEY=$K; break; fi
+            done
+          fi
+          echo "Using basemap build $KEY"
+          pmtiles extract "https://build.protomaps.com/$KEY" "out/$REGION.pmtiles" --bbox="$BBOX" --download-threads=8
+          ls -lh out
+
+      - name: Routing tiles (Valhalla)
+        run: |
+          IMG=ghcr.io/valhalla/valhalla:3.9.1
+          docker pull $IMG || { IMG=ghcr.io/valhalla/valhalla:latest; docker pull $IMG; }
+          docker run --rm --user root -v "$PWD/work:/data" $IMG bash -c '
+            set -e
+            valhalla_build_config \
+              --mjolnir-tile-dir /data/tiles \
+              --mjolnir-tile-extract /data/routing.tar \
+              --mjolnir-admin /data/admins.sqlite > /data/valhalla.json
+            valhalla_build_admins -c /data/valhalla.json /data/region.osm.pbf
+            valhalla_build_tiles -c /data/valhalla.json /data/region.osm.pbf
+            valhalla_build_extract -c /data/valhalla.json -v
+          '
+          sudo mv work/routing.tar "out/$REGION-routing.tar"
+          sudo rm -rf work/tiles
+          sudo chown -R "$USER" out
+          ls -lh out
+
+      - name: Search database
+        run: |
+          python3 scripts/build_search_db.py work/region.osm.pbf "out/$REGION-search.sqlite"
+          ls -lh out
+
+      - name: Publish to the "maps" release
+        run: |
+          gh release view maps >/dev/null 2>&1 || gh release create maps \
+            --title "Offline maps" \
+            --notes "Offline map, routing and search packs used by Ski Nav. Built from OpenStreetMap data (© OpenStreetMap contributors) and the Protomaps basemap." \
+            --latest=false
+          gh release upload maps out/* --clobber
+
+      - name: Describe this pack
+        run: |
+          size() { stat -c %s "$1"; }
+          jq -n --arg id "$REGION" \
+            --argjson region "$(jq --arg id "$REGION" '.[] | select(.id == $id)' data/regions.json)" \
+            --arg version "$(date -u +%Y-%m-%d)" \
+            --argjson map "$(size out/$REGION.pmtiles)" \
+            --argjson routing "$(size out/$REGION-routing.tar)" \
+            --argjson search "$(size out/$REGION-search.sqlite)" \
+            '{id: $id, name: $region.name, bbox: $region.bbox, version: $version,
+              files: {
+                map: {name: ($id + ".pmtiles"), size: $map},
+                routing: {name: ($id + "-routing.tar"), size: $routing},
+                search: {name: ($id + "-search.sqlite"), size: $search}
+              }}' > "pack-$REGION.json"
+          cat "pack-$REGION.json"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pack-${{ matrix.region }}
+          path: pack-${{ matrix.region }}.json
+
+  catalog:
+    needs: build
+    if: always()
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pack-*
+          merge-multiple: true
+          path: packs
+      - name: Update regions.json on the release
+        run: |
+          gh release download maps -p regions.json -O old.json 2>/dev/null || echo '[]' > old.json
+          ls packs/*.json >/dev/null 2>&1 || { echo "No packs were built"; exit 1; }
+          jq -s '.' packs/*.json > new.json
+          # New packs replace old entries with the same id; keep the order of data/regions.json.
+          jq -n --slurpfile old old.json --slurpfile new new.json --slurpfile order data/regions.json '
+            ($old[0] + $new[0]) as $all
+            | [ $order[0][] | .id as $id | ([ $all[] | select(.id == $id) ] | last) | select(. != null) ]
+          ' > regions.json
+          cat regions.json
+          gh release upload maps regions.json --clobber

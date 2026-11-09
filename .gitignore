@@ -1,0 +1,10 @@
+*.xcodeproj
+build/
+DerivedData/
+Payload/
+*.ipa
+.DS_Store
+xcuserdata/
+MapAssets/*
+!MapAssets/.gitkeep
+node_modules/

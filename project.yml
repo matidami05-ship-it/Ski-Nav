@@ -1,0 +1,63 @@
+name: SkiNav
+options:
+  bundleIdPrefix: com.ski
+  deploymentTarget:
+    iOS: "17.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+packages:
+  Ferrostar:
+    url: https://github.com/stadiamaps/ferrostar
+    from: 0.59.0
+  MapLibreSwiftUIDSL:
+    url: https://github.com/maplibre/swiftui-dsl
+    from: 0.26.1
+  MapLibreNative:
+    url: https://github.com/maplibre/maplibre-gl-native-distribution
+    from: 7.0.0
+  ValhallaMobile:
+    url: https://github.com/Rallista/valhalla-mobile
+    from: 0.6.4
+  ValhallaModels:
+    url: https://github.com/Rallista/valhalla-openapi-models-swift
+    minorVersion: 0.6.0
+targets:
+  SkiNav:
+    type: application
+    platform: iOS
+    sources:
+      - path: SkiNav
+      - path: MapAssets
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - package: Ferrostar
+        product: FerrostarCore
+      - package: Ferrostar
+        product: FerrostarMapLibreUI
+      - package: MapLibreSwiftUIDSL
+        product: MapLibreSwiftUI
+      - package: MapLibreSwiftUIDSL
+        product: MapLibreSwiftDSL
+      - package: MapLibreNative
+        product: MapLibre
+      - package: ValhallaMobile
+        product: Valhalla
+      - package: ValhallaModels
+        product: ValhallaConfigModels
+      - sdk: CarPlay.framework
+      - sdk: libsqlite3.tbd
+    settings:
+      base:
+        PRODUCT_NAME: SkiNav
+        PRODUCT_BUNDLE_IDENTIFIER: com.matidami05.skinav
+        INFOPLIST_FILE: Support/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: Support/SkiNav.entitlements
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+    scheme: {}

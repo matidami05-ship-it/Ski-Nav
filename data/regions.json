@@ -1,0 +1,14 @@
+[
+  {
+    "id": "wisconsin",
+    "name": "Wisconsin",
+    "extracts": ["north-america/us/wisconsin"],
+    "bbox": [-92.95, 42.45, -86.20, 47.35]
+  },
+  {
+    "id": "wisconsin-illinois",
+    "name": "Wisconsin + Illinois",
+    "extracts": ["north-america/us/wisconsin", "north-america/us/illinois"],
+    "bbox": [-92.95, 36.95, -86.20, 47.35]
+  }
+]

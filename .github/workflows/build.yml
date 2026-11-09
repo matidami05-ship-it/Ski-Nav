@@ -1,0 +1,75 @@
+name: Build iOS
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use the newest Xcode
+        run: |
+          XC=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          [ -n "$XC" ] || XC=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          echo "Using $XC"
+          sudo xcode-select -s "$XC/Contents/Developer"
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Build bundled map assets (styles, fonts, icons)
+        run: bash scripts/make_map_assets.sh
+
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+            build/SourcePackages
+          key: spm-${{ hashFiles('project.yml') }}
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build for Simulator (compile check)
+        run: |
+          xcodebuild -project SkiNav.xcodeproj -scheme SkiNav \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -configuration Debug -derivedDataPath build \
+            -skipPackagePluginValidation -skipMacroValidation \
+            build CODE_SIGNING_ALLOWED=NO 2>&1 | tee sim.log | grep -E "error:|warning: unre|BUILD (SUCCEEDED|FAILED)" ; exit ${PIPESTATUS[0]}
+
+      - name: Build unsigned IPA
+        run: |
+          xcodebuild -project SkiNav.xcodeproj -scheme SkiNav \
+            -sdk iphoneos -destination 'generic/platform=iOS' \
+            -configuration Release -derivedDataPath build \
+            -skipPackagePluginValidation -skipMacroValidation \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/SkiNav.app Payload/
+          zip -qr SkiNav-unsigned.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SkiNav-unsigned-ipa
+          path: SkiNav-unsigned.ipa
+
+      # A Release gives a direct download link that works on a phone.
+      - name: Publish to the "latest" release
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --cleanup-tag -y || true
+          gh release create latest SkiNav-unsigned.ipa \
+            --title "Ski Nav (latest build)" \
+            --notes "Built from ${GITHUB_SHA::7}. Unsigned: install with Sideloadly or AltStore." \
+            --latest

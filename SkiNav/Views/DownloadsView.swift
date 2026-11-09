@@ -1,0 +1,155 @@
+import SwiftUI
+
+struct DownloadsView: View {
+    @Bindable var model: AppModel
+    @Bindable private var settings = AppSettings.shared
+    @Environment(\.dismiss) private var dismiss
+    @State private var confirmDelete: RegionPack?
+
+    private var store: RegionStore { model.regions }
+
+    var body: some View {
+        List {
+            if !store.installed.isEmpty {
+                Section {
+                    ForEach(store.installedPacks) { pack in
+                        installedRow(pack)
+                    }
+                } header: {
+                    Text("On this iPhone")
+                } footer: {
+                    Text("Downloaded maps work with no signal: the map, search, and turn-by-turn directions.")
+                }
+            }
+
+            Section {
+                if store.catalog.isEmpty {
+                    if store.isLoadingCatalog {
+                        HStack { ProgressView(); Text("Loading…").foregroundStyle(.secondary) }
+                    } else {
+                        Text(store.catalogError ?? "No maps available yet.")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                ForEach(store.catalog) { pack in
+                    availableRow(pack)
+                }
+            } header: {
+                Text("Available")
+            } footer: {
+                Text("Downloads keep going in the background. Wi-Fi recommended; maps are rebuilt monthly from OpenStreetMap.")
+            }
+        }
+        .navigationTitle("Offline Maps")
+        .navigationBarTitleDisplayMode(.inline)
+        .refreshable { await store.refreshCatalog() }
+        .task { await store.refreshCatalog() }
+        .toolbar {
+            if model.showDownloads {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .confirmationDialog(
+            "Delete \(confirmDelete?.name ?? "map")?",
+            isPresented: Binding(get: { confirmDelete != nil }, set: { if !$0 { confirmDelete = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let pack = confirmDelete { store.delete(pack.id) }
+            }
+        } message: {
+            Text("You can download it again later.")
+        }
+    }
+
+    private func installedRow(_ pack: RegionPack) -> some View {
+        let isActive = model.activePack?.id == pack.id
+        return HStack(spacing: 12) {
+            Image(systemName: isActive ? "checkmark.circle.fill" : "map.fill")
+                .font(.title2)
+                .foregroundStyle(isActive ? .green : .secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(pack.name).font(.body.weight(.semibold))
+                Text("\(Fmt.bytes(pack.totalSize)) · updated \(pack.version)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if isActive {
+                    Text("In use").font(.caption.weight(.semibold)).foregroundStyle(.green)
+                }
+            }
+            Spacer()
+            if store.updateAvailable(pack.id), let latest = store.catalog.first(where: { $0.id == pack.id }) {
+                Button("Update") { store.download(latest) }
+                    .buttonStyle(.bordered)
+                    .disabled(store.isDownloading(pack.id))
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            settings.activeRegionID = pack.id
+        }
+        .swipeActions {
+            Button("Delete", role: .destructive) { confirmDelete = pack }
+        }
+        .contextMenu {
+            Button("Use This Map", systemImage: "checkmark") { settings.activeRegionID = pack.id }
+            Button("Pick Automatically", systemImage: "location") { settings.activeRegionID = nil }
+            Button("Delete", systemImage: "trash", role: .destructive) { confirmDelete = pack }
+        }
+    }
+
+    @ViewBuilder
+    private func availableRow(_ pack: RegionPack) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                Image(systemName: "map")
+                    .font(.title2)
+                    .foregroundStyle(Color.accentColor)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(pack.name).font(.body.weight(.semibold))
+                    Text("\(Fmt.bytes(pack.totalSize)) · \(pack.version)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if let progress = store.progress[pack.id] {
+                    Button {
+                        store.cancel(pack.id)
+                    } label: {
+                        ZStack {
+                            Circle().stroke(Color.accentColor.opacity(0.2), lineWidth: 3)
+                            Circle().trim(from: 0, to: progress)
+                                .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                                .rotationEffect(.degrees(-90))
+                            Image(systemName: "stop.fill").font(.system(size: 9))
+                        }
+                        .frame(width: 28, height: 28)
+                    }
+                    .buttonStyle(.plain)
+                } else if store.installed[pack.id]?.version == pack.version {
+                    Image(systemName: "checkmark").foregroundStyle(.secondary)
+                } else {
+                    Button {
+                        store.download(pack)
+                    } label: {
+                        Image(systemName: "icloud.and.arrow.down").font(.title3)
+                    }
+                    .buttonStyle(.borderless)
+                }
+            }
+            if let progress = store.progress[pack.id] {
+                Text("Downloading… \(Int(progress * 100))% of \(Fmt.bytes(pack.totalSize))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if let error = store.downloadErrors[pack.id] {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+}
