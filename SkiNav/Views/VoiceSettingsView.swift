@@ -52,7 +52,7 @@ struct VoiceSettingsView: View {
             } footer: {
                 Text(settings.voiceEngine == .azure
                     ? "Microsoft neural voices sound like a real person. Your route's instructions are recorded when you start, so the voice keeps working without signal. Falls back to the iPhone voice if needed."
-                    : "Works offline. For a more natural sound, download an Enhanced or Premium voice: iPhone Settings › Accessibility › Spoken Content › Voices › \\(settings.guidanceLanguage == .polish ? "Polish › Zosia" : "English").")
+                    : "Works offline. For a more natural sound, download an Enhanced or Premium voice: iPhone Settings › Accessibility › Spoken Content › Voices › \(settings.guidanceLanguage == .polish ? "Polish › Zosia" : "English").")
             }
 
             if settings.voiceEngine == .azure {
