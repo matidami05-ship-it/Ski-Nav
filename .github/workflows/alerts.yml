@@ -1,0 +1,60 @@
+name: Update road alerts
+
+# Rebuilds only the small speed camera / railroad crossing file for each region and adds it
+# to the existing packs, so phones get alerts without re-downloading the whole map.
+
+on:
+  workflow_dispatch:
+    inputs:
+      region:
+        description: "Region id from data/regions.json, or 'all'"
+        default: all
+
+permissions:
+  contents: write
+
+jobs:
+  alerts:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      WANT: ${{ github.event.inputs.region || 'all' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q osmium-tool
+          pip install --quiet osmium
+
+      - name: Build alerts for each region
+        run: |
+          mkdir -p work out
+          for id in $(jq -r '.[].id' data/regions.json); do
+            if [ "$WANT" != "all" ] && [ "$WANT" != "$id" ]; then continue; fi
+            rm -f work/*.pbf
+            i=0
+            for e in $(jq -r --arg id "$id" '.[] | select(.id == $id) | .extracts[]' data/regions.json); do
+              f="work/$(echo "$e" | tr / _).osm.pbf"
+              curl -fsSL --retry 3 -o "$f" "https://download.geofabrik.de/$e-latest.osm.pbf"
+              i=$((i+1))
+            done
+            if [ "$i" -gt 1 ]; then osmium merge work/*.osm.pbf -o work/region.pbf; else mv work/*.osm.pbf work/region.pbf; fi
+            python3 scripts/build_alerts.py work/region.pbf "out/$id-alerts.json"
+          done
+          ls -lh out
+
+      - name: Publish and add to regions.json
+        run: |
+          gh release upload maps out/* --clobber
+          gh release download maps -p regions.json -O regions.json
+          for f in out/*-alerts.json; do
+            id=$(basename "$f" -alerts.json)
+            size=$(stat -c %s "$f")
+            jq --arg id "$id" --arg name "$(basename "$f")" --argjson size "$size" \
+              'map(if .id == $id then .files.alerts = {name: $name, size: $size} else . end)' \
+              regions.json > tmp.json && mv tmp.json regions.json
+          done
+          cat regions.json
+          gh release upload maps regions.json --clobber

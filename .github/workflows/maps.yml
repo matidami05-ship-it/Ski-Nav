@@ -116,6 +116,11 @@ jobs:
           python3 scripts/build_search_db.py work/region.osm.pbf "out/$REGION-search.sqlite"
           ls -lh out
 
+      - name: Speed cameras and railroad crossings
+        run: |
+          python3 scripts/build_alerts.py work/region.osm.pbf "out/$REGION-alerts.json"
+          ls -lh out
+
       - name: Publish to the "maps" release
         run: |
           gh release view maps >/dev/null 2>&1 || gh release create maps \
@@ -129,15 +134,17 @@ jobs:
           size() { stat -c %s "$1"; }
           jq -n --arg id "$REGION" \
             --argjson region "$(jq --arg id "$REGION" '.[] | select(.id == $id)' data/regions.json)" \
-            --arg version "$(date -u +%Y-%m-%d)" \
+            --arg version "$(date -u +%Y-%m-%d).${{ github.run_number }}" \
             --argjson map "$(size out/$REGION.pmtiles)" \
             --argjson routing "$(size out/$REGION-routing.tar)" \
             --argjson search "$(size out/$REGION-search.sqlite)" \
+            --argjson alerts "$(size out/$REGION-alerts.json)" \
             '{id: $id, name: $region.name, bbox: $region.bbox, version: $version,
               files: {
                 map: {name: ($id + ".pmtiles"), size: $map},
                 routing: {name: ($id + "-routing.tar"), size: $routing},
-                search: {name: ($id + "-search.sqlite"), size: $search}
+                search: {name: ($id + "-search.sqlite"), size: $search},
+                alerts: {name: ($id + "-alerts.json"), size: $alerts}
               }}' > "pack-$REGION.json"
           cat "pack-$REGION.json"
 
