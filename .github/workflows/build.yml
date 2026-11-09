@@ -49,7 +49,7 @@ jobs:
       - name: Build for Simulator (compile check)
         run: |
           xcodebuild -project SkiNav.xcodeproj -scheme SkiNav \
-            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -destination 'generic/platform=iOS Simulator' \
             -configuration Debug -derivedDataPath build \
             -skipPackagePluginValidation -skipMacroValidation \
             build CODE_SIGNING_ALLOWED=NO 2>&1 | tee sim.log | grep -E -A3 "error:|BUILD (SUCCEEDED|FAILED)" ; exit ${PIPESTATUS[0]}
@@ -57,7 +57,7 @@ jobs:
       - name: Build unsigned IPA
         run: |
           xcodebuild -project SkiNav.xcodeproj -scheme SkiNav \
-            -sdk iphoneos -destination 'generic/platform=iOS' \
+            -destination 'generic/platform=iOS' \
             -configuration Release -derivedDataPath build \
             -skipPackagePluginValidation -skipMacroValidation \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
