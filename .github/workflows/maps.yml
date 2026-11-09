@@ -61,6 +61,7 @@ jobs:
           gh release download -R protomaps/go-pmtiles -p '*Linux_x86_64.tar.gz' -O pmtiles.tgz
           tar xzf pmtiles.tgz pmtiles && sudo mv pmtiles /usr/local/bin/
           pmtiles version || true
+          bash scripts/install_tippecanoe.sh
 
       - name: Download OpenStreetMap data
         run: |
@@ -121,6 +122,9 @@ jobs:
           python3 scripts/build_alerts.py work/region.osm.pbf "out/$REGION-alerts.json"
           ls -lh out
 
+      - name: Street detail for the 3D map
+        run: bash scripts/build_detail_tiles.sh work/region.osm.pbf "out/$REGION-detail.pmtiles"
+
       - name: Publish to the "maps" release
         run: |
           gh release view maps >/dev/null 2>&1 || gh release create maps \
@@ -139,12 +143,14 @@ jobs:
             --argjson routing "$(size out/$REGION-routing.tar)" \
             --argjson search "$(size out/$REGION-search.sqlite)" \
             --argjson alerts "$(size out/$REGION-alerts.json)" \
+            --argjson detail "$(size out/$REGION-detail.pmtiles)" \
             '{id: $id, name: $region.name, bbox: $region.bbox, version: $version,
               files: {
                 map: {name: ($id + ".pmtiles"), size: $map},
                 routing: {name: ($id + "-routing.tar"), size: $routing},
                 search: {name: ($id + "-search.sqlite"), size: $search},
-                alerts: {name: ($id + "-alerts.json"), size: $alerts}
+                alerts: {name: ($id + "-alerts.json"), size: $alerts},
+                detail: {name: ($id + "-detail.pmtiles"), size: $detail}
               }}' > "pack-$REGION.json"
           cat "pack-$REGION.json"
 

@@ -1,0 +1,60 @@
+name: Update street detail
+
+# Builds the 3D street detail tiles (lanes, sidewalks, crosswalks, rail, signals) for each
+# region and adds them to the existing packs. Phones download them on request.
+
+on:
+  workflow_dispatch:
+    inputs:
+      region:
+        description: "Region id from data/regions.json, or 'all'"
+        default: all
+
+permissions:
+  contents: write
+
+jobs:
+  detail:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      GH_TOKEN: ${{ github.token }}
+      WANT: ${{ github.event.inputs.region || 'all' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q osmium-tool
+          pip install --quiet osmium
+          bash scripts/install_tippecanoe.sh
+
+      - name: Build street detail for each region
+        run: |
+          mkdir -p work out
+          for id in $(jq -r '.[].id' data/regions.json); do
+            if [ "$WANT" != "all" ] && [ "$WANT" != "$id" ]; then continue; fi
+            rm -f work/*.pbf
+            i=0
+            for e in $(jq -r --arg id "$id" '.[] | select(.id == $id) | .extracts[]' data/regions.json); do
+              curl -fsSL --retry 3 -o "work/$(echo "$e" | tr / _).osm.pbf" "https://download.geofabrik.de/$e-latest.osm.pbf"
+              i=$((i+1))
+            done
+            if [ "$i" -gt 1 ]; then osmium merge work/*.osm.pbf -o work/region.pbf; else mv work/*.osm.pbf work/region.pbf; fi
+            bash scripts/build_detail_tiles.sh work/region.pbf "out/$id-detail.pmtiles"
+          done
+
+      - name: Publish and add to regions.json
+        run: |
+          gh release upload maps out/* --clobber
+          gh release download maps -p regions.json -O regions.json
+          for f in out/*-detail.pmtiles; do
+            id=$(basename "$f" -detail.pmtiles)
+            size=$(stat -c %s "$f")
+            jq --arg id "$id" --arg name "$(basename "$f")" --argjson size "$size" \
+              'map(if .id == $id then .files.detail = {name: $name, size: $size} else . end)' \
+              regions.json > tmp.json && mv tmp.json regions.json
+          done
+          cat regions.json
+          gh release upload maps regions.json --clobber
