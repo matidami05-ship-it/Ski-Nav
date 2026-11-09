@@ -73,7 +73,7 @@ enum StreetDetailStyle {
     }
 
     static func detailLayers(dark: Bool) -> [[String: Any]] {
-        let asphalt = dark ? "#4b525e" : "#b8bdc5"
+        let asphalt = dark ? "#565f70" : "#b8bdc5"
         let marking = dark ? "#e6e6e6" : "#ffffff"
         let yellow = dark ? "#e0b84a" : "#f2c230"
         let sidewalk = dark ? "#3a3f48" : "#e4e1da"
