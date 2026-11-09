@@ -235,7 +235,6 @@ struct MapScreen: View {
                 model.dropPin(at: context.coordinate)
             }
         }
-        .ignoresSafeArea()
     }
 }
 
