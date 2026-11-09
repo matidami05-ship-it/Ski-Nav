@@ -49,6 +49,14 @@ final class OfflineRouteProvider: CustomRouteProvider {
         return engine
     }
 
+    /// Drive (or walk) times between every pair of places, for ordering trip stops.
+    static func matrix(routingTar: URL, json: String) async throws -> String {
+        let engine = try engine(for: routingTar)
+        return try await Task.detached(priority: .userInitiated) {
+            try engine.matrix(rawRequest: json)
+        }.value
+    }
+
     static func releaseEngines() {
         engineLock.lock()
         defer { engineLock.unlock() }

@@ -16,6 +16,12 @@ on the phone from a downloaded pack, so it keeps working with no signal.
   highway exits and forks
 - **Speed camera and railroad crossing alerts** on the route (banner, map icons, voice)
 - **Street view** (Apple Look Around) on places and dropped pins, when online
+- **Points of interest**: gas, food, coffee, EV charging, groceries, parking, hotels and
+  more, nearby (offline + Apple when online) or **along your route** while driving
+- **Trip planner**: multiple stops, drag to reorder, optimize the order with real drive
+  times (Valhalla matrix), arrival time at each stop
+- **Parking spot** saving (manual, on arrival, or when CarPlay disconnects) and **walking
+  navigation** back to the car or anywhere
 - Home, Work, saved places, recents; long-press the map to drop a pin
 - **CarPlay**: destinations list, route preview, full navigation on the car screen
 - Online fallback (public Valhalla server) for trips outside your downloaded map

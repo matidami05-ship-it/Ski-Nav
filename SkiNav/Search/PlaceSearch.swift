@@ -46,6 +46,7 @@ final class PlaceSearch {
     }
 
     var hasOfflineDatabase: Bool { offlineDB != nil }
+    var database: OfflineSearchDB? { offlineDB }
 
     func clear() {
         query = ""

@@ -29,6 +29,7 @@ enum Screen: Equatable {
     case browse
     case place
     case routes
+    case poi
     case navigating
 }
 
@@ -58,7 +59,7 @@ final class AppModel {
     var selectedPlace: Place?
     private(set) var routes: [Route] = []
     var selectedRouteIndex = 0 {
-        didSet { if oldValue != selectedRouteIndex { updateRouteAlerts() } }
+        didSet { if oldValue != selectedRouteIndex { updateRouteAlerts(); updateStopETAs() } }
     }
     private(set) var coreState: NavigationState?
     private(set) var isMuted = false
@@ -68,6 +69,18 @@ final class AppModel {
     private(set) var destination: Place?
     private(set) var arrived = false
     var showDownloads = false
+    var showTripPlanner = false
+    var showAlongRoute = false
+
+    /// The trip: stops in order, the last one is the destination.
+    private(set) var stops: [Place] = []
+    /// Seconds from the start to each stop on the selected route.
+    private(set) var stopETAs: [Double] = []
+
+    /// Points of interest being browsed.
+    private(set) var poiCategory: POICategory?
+    private(set) var poiResults: [POIResult] = []
+    private(set) var isLoadingPOI = false
 
     /// Speed cameras and railroad crossings on the route being previewed or driven.
     private(set) var routeAlerts: [RouteAlert] = []
@@ -338,8 +351,13 @@ final class AppModel {
     func closePlace() {
         selectedPlace = nil
         routes = []
-        screen = .browse
-        recenter()
+        stops = []
+        if poiCategory != nil, !poiResults.isEmpty {
+            screen = .poi // back to the list of results
+        } else {
+            screen = .browse
+            recenter()
+        }
     }
 
     func recenter() {
@@ -349,19 +367,28 @@ final class AppModel {
     // MARK: Directions
 
     func directions(to place: Place) async {
+        stops = [place]
+        await planRoute()
+    }
+
+    /// Routes from here through every stop, in order.
+    func planRoute() async {
         guard let here = userLocation ?? locationProvider.lastLocation?.clLocation else {
             errorMessage = "Waiting for your location…"
             return
         }
-        selectedPlace = place
+        guard let final = stops.last else { return }
+        let planned = stops.map(\.id)
+        selectedPlace = final
         screen = .routes
         routes = []
+        stopETAs = []
         selectedRouteIndex = 0
         isLoadingRoutes = true
         errorMessage = nil
         defer { isLoadingRoutes = false }
 
-        let waypoints = [Waypoint(coordinate: GeographicCoordinate(cl: place.coordinate), kind: .break)]
+        let waypoints = stops.map { Waypoint(coordinate: GeographicCoordinate(cl: $0.coordinate), kind: .break) }
         do {
             var found: [Route]
             do {
@@ -374,15 +401,172 @@ final class AppModel {
                 found = try await Self.onlineRoutes(from: here, waypoints: waypoints,
                                                     profile: settings.travelMode.profile, options: settings.routeOptions)
             }
-            guard screen == .routes, selectedPlace?.id == place.id else { return }
+            guard screen == .routes, stops.map(\.id) == planned else { return }
             guard !found.isEmpty else { throw RoutingError.engine("No route found.") }
             routes = found
             fitCamera(to: found)
             updateRouteAlerts()
+            updateStopETAs()
         } catch {
             errorMessage = error.localizedDescription
-            if routes.isEmpty { screen = .place }
+            if routes.isEmpty { screen = stops.count > 1 ? .routes : .place }
         }
+    }
+
+    // MARK: Trip planner
+
+    /// Add a stop. During route preview it goes before the final destination.
+    func addStop(_ place: Place) {
+        guard stops.count < 15 else {
+            errorMessage = "A trip can have up to 15 stops."
+            return
+        }
+        if stops.isEmpty || screen != .routes {
+            stops.append(place)
+        } else {
+            stops.insert(place, at: stops.count - 1)
+        }
+    }
+
+    func setStops(_ newStops: [Place]) {
+        stops = newStops
+    }
+
+    func removeStop(at offsets: IndexSet) {
+        stops.remove(atOffsets: offsets)
+    }
+
+    /// Reorder stops for the shortest total travel time, using real drive (or walk) times.
+    func optimizeStops(keepLastFixed: Bool) async {
+        guard stops.count >= 2, let here = userLocation else { return }
+        let points = [here.coordinate] + stops.map(\.coordinate)
+        let times = await travelTimes(points)
+        let order = TripOptimizer.bestOrder(times: times, keepLastFixed: keepLastFixed)
+        guard order.count == stops.count else { return }
+        stops = order.map { stops[$0 - 1] }
+    }
+
+    private func travelTimes(_ points: [CLLocationCoordinate2D]) async -> [[Double]] {
+        let locations = points.map { ["lat": $0.latitude, "lon": $0.longitude] }
+        let body: [String: Any] = ["sources": locations, "targets": locations,
+                                   "costing": settings.travelMode.profile]
+        guard let data = try? JSONSerialization.data(withJSONObject: body),
+              let json = String(data: data, encoding: .utf8)
+        else { return TripOptimizer.straightLineTimes(points) }
+
+        if let pack = activePack,
+           let response = try? await OfflineRouteProvider.matrix(routingTar: regions.fileURL(pack, .routing), json: json),
+           let times = TripOptimizer.parseMatrix(response, count: points.count)
+        {
+            return times
+        }
+        if Connectivity.shared.isOnline, let url = URL(string: "https://valhalla1.openstreetmap.de/sources_to_targets") {
+            var request = URLRequest(url: url, timeoutInterval: 20)
+            request.httpMethod = "POST"
+            request.httpBody = data
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            if let result = try? await URLSession.shared.data(for: request),
+               let text = String(data: result.0, encoding: .utf8),
+               let times = TripOptimizer.parseMatrix(text, count: points.count)
+            {
+                return times
+            }
+        }
+        return TripOptimizer.straightLineTimes(points)
+    }
+
+    /// Seconds from the start to each stop on the selected route.
+    private func updateStopETAs() {
+        guard let route = selectedRoute else { stopETAs = []; return }
+        var etas: [Double] = []
+        var elapsed = 0.0
+        for step in route.steps {
+            elapsed += step.duration
+            // Each leg ends with a zero-length "arrive" step.
+            if step.distance < 1, step.duration < 1 { etas.append(elapsed) }
+        }
+        if etas.count != stops.count {
+            // Couldn't find the legs: spread by straight-line share as a rough guide.
+            etas = stops.indices.map { i in route.duration * Double(i + 1) / Double(max(stops.count, 1)) }
+        }
+        stopETAs = etas
+    }
+
+    // MARK: Points of interest
+
+    func showNearby(_ category: POICategory) {
+        guard let here = userLocation?.coordinate else {
+            errorMessage = "Waiting for your location…"
+            return
+        }
+        poiCategory = category
+        poiResults = []
+        isLoadingPOI = true
+        selectedPlace = nil
+        routes = []
+        screen = .poi
+        let db = search.database
+        let online = Connectivity.shared.isOnline && settings.useOnlineWhenAvailable
+        Task {
+            let found = await POIFinder.nearby(category, around: here, database: db, online: online)
+            guard poiCategory == category, screen == .poi || screen == .place else { return }
+            poiResults = found
+            isLoadingPOI = false
+            fitCamera(points: [here] + found.prefix(12).map(\.place.coordinate))
+        }
+    }
+
+    /// Search for a category ahead on the route while driving.
+    func findAlongRoute(_ category: POICategory) async -> [POIResult] {
+        guard let route = core.route else { return [] }
+        let traveled = route.distance - (coreState?.currentProgress?.distanceRemaining ?? route.distance)
+        return await POIFinder.alongRoute(category, geometry: route.geometry, traveled: traveled,
+                                          database: search.database,
+                                          maxOffRoute: isWalking ? 300 : 1200)
+    }
+
+    func closePOI() {
+        poiCategory = nil
+        poiResults = []
+        screen = .browse
+        recenter()
+    }
+
+    /// Stop somewhere on the way and then continue to the remaining stops.
+    func addStopWhileNavigating(_ place: Place) async {
+        guard screen == .navigating, let here = userLocation else { return }
+        let remaining = coreState?.remainingWaypoints ?? stops.map {
+            Waypoint(coordinate: GeographicCoordinate(cl: $0.coordinate), kind: .break)
+        }
+        let waypoints = [Waypoint(coordinate: GeographicCoordinate(cl: place.coordinate), kind: .break)] + remaining
+        do {
+            let found = try await core.getRoutes(initialLocation: here.userLocation, waypoints: waypoints)
+            guard let route = found.first else { throw RoutingError.engine("No route found.") }
+            let done = max(0, stops.count - remaining.count)
+            stops.insert(place, at: min(done, stops.count))
+            try core.startNavigation(route: route)
+            announcedAlerts = []
+            updateRouteAlerts()
+            camera = navigationCamera
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func fitCamera(points: [CLLocationCoordinate2D]) {
+        guard let first = points.first, points.count > 1 else { return }
+        var minLat = first.latitude, maxLat = first.latitude, minLng = first.longitude, maxLng = first.longitude
+        for c in points {
+            minLat = min(minLat, c.latitude); maxLat = max(maxLat, c.latitude)
+            minLng = min(minLng, c.longitude); maxLng = max(maxLng, c.longitude)
+        }
+        camera = .boundingBox(
+            MLNCoordinateBounds(
+                sw: CLLocationCoordinate2D(latitude: minLat, longitude: minLng),
+                ne: CLLocationCoordinate2D(latitude: maxLat, longitude: maxLng)
+            ),
+            edgePadding: UIEdgeInsets(top: 110, left: 50, bottom: 380, right: 50)
+        )
     }
 
     private static func onlineRoutes(from here: CLLocation, waypoints: [Waypoint], profile: String,
@@ -431,8 +615,10 @@ final class AppModel {
         do {
             arrived = false
             try core.startNavigation(route: route)
-            destination = selectedPlace
-            if let place = selectedPlace { library.addRecent(place) }
+            destination = stops.last ?? selectedPlace
+            if let place = destination { library.addRecent(place) }
+            poiCategory = nil
+            poiResults = []
             screen = .navigating
             announcedAlerts = []
             updateRouteAlerts()
@@ -455,8 +641,8 @@ final class AppModel {
         guard mode != settings.travelMode, screen != .navigating else { return }
         settings.travelMode = mode
         refreshRouting()
-        if screen == .routes, let place = selectedPlace {
-            Task { await directions(to: place) }
+        if screen == .routes, !stops.isEmpty {
+            Task { await planRoute() }
         }
     }
 
@@ -497,6 +683,8 @@ final class AppModel {
         routes = []
         selectedPlace = nil
         destination = nil
+        stops = []
+        stopETAs = []
         routeAlerts = []
         upcomingAlert = nil
         locationProvider.startUpdating()

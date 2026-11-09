@@ -4,6 +4,7 @@ import SwiftUI
 struct SearchSheet: View {
     @Bindable var model: AppModel
     var onPick: (Place) -> Void
+    var onCategory: ((POICategory) -> Void)? = nil
     @FocusState private var focused: Bool
     @Environment(\.dismiss) private var dismiss
 
@@ -60,6 +61,30 @@ struct SearchSheet: View {
 
     @ViewBuilder
     private var suggestions: some View {
+        if let onCategory {
+            Section("Find Nearby") {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 12) {
+                    ForEach(POICategory.allCases) { category in
+                        Button { onCategory(category) } label: {
+                            VStack(spacing: 4) {
+                                Image(systemName: category.symbol)
+                                    .font(.system(size: 15, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 40, height: 40)
+                                    .background(category.color.gradient, in: Circle())
+                                Text(category.label)
+                                    .font(.caption2)
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.8)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 6)
+            }
+        }
         Section {
             favoriteRow(model.library.home, title: "Home", systemImage: "house.fill", tint: .blue)
             favoriteRow(model.library.work, title: "Work", systemImage: "briefcase.fill", tint: .brown)

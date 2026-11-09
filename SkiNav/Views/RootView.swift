@@ -20,14 +20,23 @@ struct RootView: View {
         }
         .animation(.snappy, value: model.screen)
         .sheet(isPresented: $showSearch) {
-            SearchSheet(model: model) { place in
+            SearchSheet(model: model, onPick: { place in
                 showSearch = false
                 model.select(place)
-            }
+            }, onCategory: { category in
+                showSearch = false
+                model.showNearby(category)
+            })
             .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showSettings) {
             SettingsView(model: model)
+        }
+        .sheet(isPresented: $model.showTripPlanner) {
+            TripPlannerSheet(model: model)
+        }
+        .sheet(isPresented: $model.showAlongRoute) {
+            AlongRouteSheet(model: model)
         }
         .sheet(isPresented: $model.showDownloads) {
             NavigationStack { DownloadsView(model: model) }
@@ -84,6 +93,8 @@ struct RootView: View {
                 }
             case .routes:
                 RoutesPanel(model: model)
+            case .poi:
+                POIPanel(model: model)
             }
         }
         .padding(16)

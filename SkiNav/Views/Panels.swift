@@ -44,6 +44,9 @@ struct BrowsePanel: View {
                                  systemImage: "briefcase.fill", tint: .brown) {
                         if let work = model.library.work { model.drive(to: work) } else { openSearch() }
                     }
+                    ShortcutChip(title: "Plan Trip", subtitle: "Multiple stops", systemImage: "point.topleft.down.to.point.bottomright.curvepath.fill", tint: .indigo) {
+                        model.showTripPlanner = true
+                    }
                     ForEach(model.library.saved.prefix(6)) { place in
                         ShortcutChip(title: place.name, subtitle: eta(place), systemImage: "star.fill", tint: .orange) {
                             model.select(place)
@@ -51,6 +54,8 @@ struct BrowsePanel: View {
                     }
                 }
             }
+
+            CategoryRow(model: model)
 
             statusRow
         }
@@ -261,6 +266,10 @@ struct PlaceCard: View {
                 Menu {
                     Button("Set as Home", systemImage: "house") { model.library.setHome(place) }
                     Button("Set as Work", systemImage: "briefcase") { model.library.setWork(place) }
+                    Button("Add to Trip", systemImage: "plus.circle") {
+                        model.addStop(place)
+                        model.showTripPlanner = true
+                    }
                     Button("Save as Parking Spot", systemImage: "parkingsign") {
                         model.saveParking(at: place.coordinate)
                         model.select(model.library.parkedCar?.place ?? place)
@@ -313,7 +322,9 @@ struct RoutesPanel: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("To \(model.selectedPlace?.name ?? "destination")")
+                    Text(model.stops.count > 1
+                        ? "Trip · \(model.stops.count) stops"
+                        : "To \(model.selectedPlace?.name ?? "destination")")
                         .font(.headline)
                         .lineLimit(1)
                     Text(model.routingMode.label)
@@ -328,9 +339,22 @@ struct RoutesPanel: View {
                         .background(Color(.tertiarySystemFill), in: Circle())
                 }
                 .buttonStyle(.plain)
-                CloseButton {
-                    if let place = model.selectedPlace { model.select(place) } else { model.closePlace() }
+                Button { model.showTripPlanner = true } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 15, weight: .semibold))
+                        .frame(width: 30, height: 30)
+                        .background(Color(.tertiarySystemFill), in: Circle())
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Add or edit stops")
+                CloseButton {
+                    if model.stops.count > 1 { model.closePlace() }
+                    else if let place = model.selectedPlace { model.select(place) } else { model.closePlace() }
+                }
+            }
+
+            if model.stops.count > 1 {
+                stopsSummary
             }
 
             Picker("Travel mode", selection: Binding(
@@ -354,10 +378,10 @@ struct RoutesPanel: View {
                 .font(.subheadline)
                 .onChange(of: model.settings.routingKey) {
                     // Options changed: the engine is rebuilt (RootView), then routes recalculate.
-                    if let place = model.selectedPlace {
+                    if !model.stops.isEmpty {
                         Task {
                             try? await Task.sleep(nanoseconds: 150_000_000)
-                            await model.directions(to: place)
+                            await model.planRoute()
                         }
                     }
                 }
@@ -388,6 +412,35 @@ struct RoutesPanel: View {
                 .buttonBorderShape(.roundedRectangle(radius: 14))
                 .tint(.green)
                 .disabled(model.selectedRoute == nil)
+            }
+        }
+    }
+
+    /// "1 Kwik Trip 2:14 PM → 2 Home 2:40 PM", scrollable.
+    private var stopsSummary: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(Array(model.stops.enumerated()), id: \.offset) { index, stop in
+                    if index > 0 {
+                        Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
+                    }
+                    HStack(spacing: 5) {
+                        Text("\(index + 1)")
+                            .font(.caption2.weight(.heavy))
+                            .foregroundStyle(.white)
+                            .frame(width: 18, height: 18)
+                            .background(index == model.stops.count - 1 ? Color.red : Color.indigo, in: Circle())
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(stop.name).font(.caption.weight(.semibold)).lineLimit(1)
+                            if model.stopETAs.indices.contains(index) {
+                                Text(Fmt.arrival(after: model.stopETAs[index]))
+                                    .font(.caption2.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .onTapGesture { model.showTripPlanner = true }
+                }
             }
         }
     }
@@ -428,6 +481,139 @@ struct RoutesPanel: View {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .strokeBorder(selected ? Color.accentColor : .clear, lineWidth: 2)
             )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: Points of interest
+
+/// Quick category buttons: Gas, Food, Coffee… plus More.
+struct CategoryRow: View {
+    @Bindable var model: AppModel
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(POICategory.quick) { category in
+                categoryButton(category)
+            }
+            Menu {
+                ForEach(POICategory.allCases.filter { !POICategory.quick.contains($0) }) { category in
+                    Button(category.label, systemImage: category.symbol) { model.showNearby(category) }
+                }
+            } label: {
+                VStack(spacing: 4) {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 15, weight: .bold))
+                        .frame(width: 40, height: 40)
+                        .background(Color(.tertiarySystemFill), in: Circle())
+                    Text("More").font(.caption2)
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .tint(.primary)
+        }
+    }
+
+    private func categoryButton(_ category: POICategory) -> some View {
+        Button { model.showNearby(category) } label: {
+            VStack(spacing: 4) {
+                Image(systemName: category.symbol)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(category.color.gradient, in: Circle())
+                Text(category == .ev ? "EV" : category.label)
+                    .font(.caption2)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct POIPanel: View {
+    @Bindable var model: AppModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                if let category = model.poiCategory {
+                    Label(category.label + " Nearby", systemImage: category.symbol)
+                        .font(.headline)
+                        .foregroundStyle(category.color)
+                }
+                Spacer()
+                CloseButton { model.closePOI() }
+            }
+            if model.isLoadingPOI {
+                HStack(spacing: 10) {
+                    ProgressView()
+                    Text("Searching…").foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, minHeight: 80)
+            } else if model.poiResults.isEmpty {
+                Text(model.search.hasOfflineDatabase
+                    ? "Nothing found nearby."
+                    : "Nothing found. Download a map for offline results.")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 80)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(model.poiResults) { result in
+                            POIRow(result: result, miles: model.settings.useMiles) {
+                                model.select(result.place)
+                            }
+                            Divider().padding(.leading, 48)
+                        }
+                    }
+                }
+                .frame(maxHeight: 280)
+            }
+        }
+    }
+}
+
+struct POIRow: View {
+    var result: POIResult
+    var miles: Bool
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: result.place.symbol)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 34, height: 34)
+                    .background(Color.accentColor.gradient, in: Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(result.place.name)
+                        .font(.body.weight(.semibold))
+                        .lineLimit(1)
+                    if !result.place.subtitle.isEmpty {
+                        Text(result.place.subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(result.offRoute == nil ? Fmt.distance(result.distance, miles: miles)
+                        : "in " + Fmt.distance(result.distance, miles: miles))
+                        .font(.subheadline.weight(.semibold).monospacedDigit())
+                    if let off = result.offRoute {
+                        Text(off < 60 ? "on route" : Fmt.distance(off, miles: miles) + " off")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }

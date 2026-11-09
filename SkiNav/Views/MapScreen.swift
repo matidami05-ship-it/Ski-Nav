@@ -35,6 +35,9 @@ struct MapScreen: View {
         let alternates = navigating ? [] : model.routes.enumerated().filter { $0.offset != model.selectedRouteIndex }
         let preview = navigating ? nil : model.selectedRoute
         let pin = model.selectedPlace ?? model.destination
+        let poiPlaces = model.screen == .poi || (model.screen == .place && model.poiCategory != nil)
+            ? model.poiResults.map(\.place) : []
+        let tripStops = model.stops.count > 1 ? Array(model.stops.dropLast()) : []
         let showAlerts = navigating || !model.routes.isEmpty
         let cameras = showAlerts ? model.routeAlerts.filter(\.isCamera) : []
         let crossings = showAlerts ? model.routeAlerts.filter { !$0.isCamera } : []
@@ -89,6 +92,24 @@ struct MapScreen: View {
                 )
                 .iconImage(AlertIcon.camera)
                 .iconAllowsOverlap(true)
+            }
+            if let category = model.poiCategory, !poiPlaces.isEmpty {
+                SymbolStyleLayer(
+                    identifier: "poi-results",
+                    source: ShapeSource(identifier: "poi-results-source") {
+                        poiPlaces.map { MLNPointFeature(coordinate: $0.coordinate) as MLNShape }
+                    }
+                )
+                .iconImage(AlertIcon.poi(category))
+                .iconAllowsOverlap(true)
+            }
+            for (index, stop) in tripStops.enumerated() {
+                let stopSource = ShapeSource(identifier: "stop-\(index)-source") {
+                    MLNPointFeature(coordinate: stop.coordinate)
+                }
+                SymbolStyleLayer(identifier: "stop-\(index)-label", source: stopSource)
+                    .iconImage(AlertIcon.number(index + 1))
+                    .iconAllowsOverlap(true)
             }
             if let parked, pin?.id != "parked-car" {
                 SymbolStyleLayer(
@@ -151,6 +172,21 @@ struct MapScreen: View {
                         }
                     }
                 }
+            },
+            bottomLeading: {
+                if navigating {
+                    Button {
+                        model.showAlongRoute = true
+                    } label: {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 18, weight: .semibold))
+                            .frame(width: 50, height: 50)
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
+                    }
+                    .tint(.primary)
+                    .accessibilityLabel("Find along route")
+                }
             }
         )
         .onLongPressMapGesture { context in
@@ -167,6 +203,33 @@ struct MapScreen: View {
 enum AlertIcon {
     static let camera = badge("camera.fill", fill: .systemOrange)
     static let parkedCar = badge("car.fill", fill: .systemTeal)
+
+    /// Numbered trip stop marker (drawn as an image so no map fonts are needed).
+    static func number(_ n: Int) -> UIImage {
+        let size = CGSize(width: 28, height: 28)
+        return UIGraphicsImageRenderer(size: size).image { _ in
+            let rect = CGRect(origin: .zero, size: size).insetBy(dx: 1, dy: 1)
+            UIColor.white.setFill()
+            UIBezierPath(ovalIn: rect).fill()
+            UIColor.systemIndigo.setFill()
+            UIBezierPath(ovalIn: rect.insetBy(dx: 2.5, dy: 2.5)).fill()
+            let text = "\(n)" as NSString
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 13, weight: .heavy),
+                .foregroundColor: UIColor.white,
+            ]
+            let t = text.size(withAttributes: attrs)
+            text.draw(at: CGPoint(x: (size.width - t.width) / 2, y: (size.height - t.height) / 2), withAttributes: attrs)
+        }
+    }
+
+    private static var poiCache: [POICategory: UIImage] = [:]
+    static func poi(_ category: POICategory) -> UIImage {
+        if let cached = poiCache[category] { return cached }
+        let image = badge(category.symbol, fill: category.uiColor)
+        poiCache[category] = image
+        return image
+    }
     static let railroad = badge("train.side.front.car", fill: .systemYellow, glyph: .black)
 
     private static func badge(_ symbol: String, fill: UIColor, glyph: UIColor = .white) -> UIImage {
