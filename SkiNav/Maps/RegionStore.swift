@@ -15,6 +15,8 @@ struct RegionPack: Codable, Identifiable, Hashable {
         var search: PackFile
         /// Speed cameras and railroad crossings. Small, and added to packs after the fact.
         var alerts: PackFile?
+        /// Street detail for the 3D map (lanes, crosswalks, sidewalks, rail). Optional download.
+        var detail: PackFile?
         var all: [PackFile] { [map, routing, search] + (alerts.map { [$0] } ?? []) }
     }
 
@@ -60,6 +62,10 @@ final class RegionStore {
     private(set) var revision = 0
     /// Bumps when a pack's road alerts file arrives.
     private(set) var alertsRevision = 0
+    /// Bumps when street detail is added or removed.
+    private(set) var detailRevision = 0
+    /// Download progress of street detail, by pack id.
+    private(set) var detailProgress: [String: Double] = [:]
 
     let mapsDir: URL
 
@@ -106,7 +112,7 @@ final class RegionStore {
         session.getAllTasks { tasks in
             let regions = Set(tasks.compactMap { DownloadDelegate.parse($0.taskDescription)?.region })
             Task { @MainActor in
-                for r in regions where self.progress[r] == nil { self.progress[r] = 0 }
+                for r in regions where !r.hasSuffix("#extra") && self.progress[r] == nil { self.progress[r] = 0 }
             }
         }
     }
@@ -267,7 +273,67 @@ final class RegionStore {
         return try? JSONDecoder().decode(RegionPack.self, from: data)
     }
 
+    // MARK: Street detail (optional extra)
+
+    private static let extraSuffix = "#extra"
+
+    func detailURL(_ pack: RegionPack) -> URL? {
+        guard let file = pack.files.detail else { return nil }
+        let url = regionDir(pack.id).appendingPathComponent(file.name)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    /// The street detail file the catalog offers for an installed pack, if it isn't on the phone yet.
+    func detailAvailable(_ id: String) -> RegionPack.PackFile? {
+        guard let installed = installed[id], let latest = catalog.first(where: { $0.id == id })?.files.detail
+        else { return nil }
+        if installed.files.detail == latest, detailURL(installed) != nil { return nil }
+        return latest
+    }
+
+    func downloadDetail(_ id: String) {
+        guard detailProgress[id] == nil, let file = detailAvailable(id) else { return }
+        downloadErrors[id] = nil
+        detailProgress[id] = 0
+        let task = session.downloadTask(with: URL(string: Self.releaseBase + file.name)!)
+        task.taskDescription = "\(id)\(Self.extraSuffix)|\(file.name)"
+        task.countOfBytesClientExpectsToReceive = file.size
+        task.resume()
+    }
+
+    func deleteDetail(_ id: String) {
+        guard var pack = installed[id], let file = pack.files.detail else { return }
+        try? FileManager.default.removeItem(at: regionDir(id).appendingPathComponent(file.name))
+        pack.files.detail = nil
+        installed[id] = pack
+        savePackInfo(pack)
+        detailRevision += 1
+    }
+
+    private func savePackInfo(_ pack: RegionPack) {
+        if let data = try? JSONEncoder().encode(pack) {
+            try? data.write(to: regionDir(pack.id).appendingPathComponent("pack.json"), options: .atomic)
+        }
+    }
+
+    private func finishExtra(_ id: String) {
+        detailProgress[id] = nil
+        guard var pack = installed[id], let latest = catalog.first(where: { $0.id == id })?.files.detail,
+              FileManager.default.fileExists(atPath: regionDir(id).appendingPathComponent(latest.name).path)
+        else { return }
+        pack.files.detail = latest
+        installed[id] = pack
+        savePackInfo(pack)
+        detailRevision += 1
+    }
+
     private func updateProgress(region: String, file: String, bytes: Int64) {
+        if region.hasSuffix(Self.extraSuffix) {
+            let id = String(region.dropLast(Self.extraSuffix.count))
+            let size = catalog.first(where: { $0.id == id })?.files.detail?.size ?? 1
+            detailProgress[id] = min(0.999, Double(bytes) / Double(max(size, 1)))
+            return
+        }
         guard let pack = pendingPack(region) ?? catalog.first(where: { $0.id == region }) else { return }
         written[region, default: [:]][file] = bytes
         let done = written[region, default: [:]].values.reduce(0, +)
@@ -275,6 +341,10 @@ final class RegionStore {
     }
 
     private func finishIfComplete(region: String) {
+        if region.hasSuffix(Self.extraSuffix) {
+            finishExtra(String(region.dropLast(Self.extraSuffix.count)))
+            return
+        }
         guard let pack = pendingPack(region) else { return }
         let staging = stagingDir(region)
         let ready = pack.files.all.allSatisfy {
@@ -301,6 +371,12 @@ final class RegionStore {
     }
 
     private func fail(region: String, message: String) {
+        if region.hasSuffix(Self.extraSuffix) {
+            let id = String(region.dropLast(Self.extraSuffix.count))
+            detailProgress[id] = nil
+            downloadErrors[id] = message
+            return
+        }
         guard progress[region] != nil else { return }
         cancel(region)
         downloadErrors[region] = message
@@ -336,7 +412,9 @@ final class DownloadDelegate: NSObject, URLSessionDownloadDelegate {
             onError?(info.region, "Download failed (HTTP \(http.statusCode)). Is the Ski-Nav repo public?")
             return
         }
-        let staging = mapsDir.appendingPathComponent(info.region).appendingPathComponent("staging")
+        let staging = info.region.hasSuffix("#extra")
+            ? mapsDir.appendingPathComponent(String(info.region.dropLast(6)))
+            : mapsDir.appendingPathComponent(info.region).appendingPathComponent("staging")
         try? FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
         let dest = staging.appendingPathComponent(info.file)
         try? FileManager.default.removeItem(at: dest)

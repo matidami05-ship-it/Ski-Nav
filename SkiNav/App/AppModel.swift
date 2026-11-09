@@ -54,7 +54,9 @@ final class AppModel {
     private(set) var routingMode: RoutingMode = .unavailable
     private(set) var activePack: RegionPack?
 
-    var camera: MapViewCamera = .trackUserLocation(zoom: 14)
+    var camera: MapViewCamera = AppSettings.shared.map3D
+        ? .trackUserLocationWithCourse(zoom: 17.2, pitch: 58, pitchRange: .fixed(58))
+        : .trackUserLocation(zoom: 14)
     var screen: Screen = .browse
     var selectedPlace: Place?
     private(set) var routes: [Route] = []
@@ -361,7 +363,7 @@ final class AppModel {
     }
 
     func recenter() {
-        camera = .trackUserLocation(zoom: 15)
+        camera = screen == .navigating ? navigationCamera : browseCamera
     }
 
     // MARK: Directions
@@ -631,7 +633,22 @@ final class AppModel {
 
     /// The follow-me camera for the current travel mode.
     var navigationCamera: MapViewCamera {
-        settings.travelMode == .walking ? .navigation(activity: .pedestrian) : .automotiveNavigation()
+        settings.travelMode == .walking
+            ? .navigation(activity: .pedestrian)
+            : .automotiveNavigation(zoom: 17.6, pitch: 58)
+    }
+
+    /// The camera while just driving around with the map open: 3D (tilted, turning with
+    /// you) or a flat north-up view.
+    var browseCamera: MapViewCamera {
+        settings.map3D
+            ? .trackUserLocationWithCourse(zoom: 17.2, pitch: 58, pitchRange: .fixed(58))
+            : .trackUserLocation(zoom: 15)
+    }
+
+    func toggle3D() {
+        settings.map3D.toggle()
+        if screen == .browse { camera = browseCamera }
     }
 
     var isWalking: Bool { settings.travelMode == .walking }

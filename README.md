@@ -12,6 +12,10 @@ on the phone from a downloaded pack, so it keeps working with no signal.
   highways / ferries, automatic rerouting when you miss a turn
 - **Turn-by-turn** (Ferrostar): lane-style banners, voice prompts using the best installed
   iOS voice, speed limit sign, trip progress and ETA, landscape layout
+- **3D map**: tilted, heading-up view for free driving and navigation, extruded 3D
+  buildings, and optional **street detail** (painted lane markings sized to each road's
+  real lane count, zebra crosswalks, sidewalks, railroad tracks and crossbucks, traffic
+  lights, stop signs) built from OpenStreetMap by `detail.yml`
 - **Lane guidance** arrows and a drawn **3D junction view** (road, lanes, exit sign) for
   highway exits and forks
 - **Speed camera and railroad crossing alerts** on the route (banner, map icons, voice)

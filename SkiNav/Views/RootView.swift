@@ -47,6 +47,7 @@ struct RootView: View {
         .onChange(of: model.settings.activeRegionID) { model.refreshRouting() }
         .onChange(of: model.settings.useOnlineWhenAvailable) { model.refreshRouting() }
         .onChange(of: model.regions.alertsRevision) { model.refreshRouting() }
+        .onChange(of: model.regions.detailRevision) { model.refreshRouting() }
         .onChange(of: model.settings.speedCameraAlerts) { model.updateRouteAlerts() }
         .onChange(of: model.settings.railroadAlerts) { model.updateRouteAlerts() }
     }
@@ -69,6 +70,13 @@ struct RootView: View {
             Spacer()
             VStack(spacing: 0) {
                 MapButton(systemImage: "gearshape.fill") { showSettings = true }
+                Divider().frame(width: 44)
+                Button { model.toggle3D() } label: {
+                    Text(model.settings.map3D ? "2D" : "3D")
+                        .font(.system(size: 15, weight: .bold))
+                        .frame(width: 44, height: 44)
+                }
+                .tint(.primary)
                 Divider().frame(width: 44)
                 MapButton(systemImage: "location.fill") { model.recenter() }
             }

@@ -137,6 +137,12 @@ struct MapScreen: View {
         }
         .unsafeMapViewControllerModifier { controller in
             controller.mapView.showsUserLocation = true
+            // Icons used by the 3D street detail layers.
+            if let style = controller.mapView.style {
+                for (name, image) in StreetDetailStyle.images where style.image(forName: name) == nil {
+                    style.setImage(image, forName: name)
+                }
+            }
             controller.mapView.compassViewPosition = .topLeft
             controller.mapView.compassViewMargins = CGPoint(x: 16, y: 120)
         }

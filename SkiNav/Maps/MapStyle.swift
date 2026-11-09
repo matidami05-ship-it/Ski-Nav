@@ -15,7 +15,9 @@ enum MapStyle {
     static func url(pack: RegionPack?, dark: Bool, store: RegionStore) -> URL {
         guard let pack else { return dark ? onlineDark : onlineLight }
         let flavor = dark ? "dark" : "light"
-        let key = "\(pack.id)-\(pack.version)-\(flavor)"
+        let settings = AppSettings.shared
+        let detail = settings.streetDetail ? store.detailURL(pack) : nil
+        let key = "\(pack.id)-\(pack.version)-\(flavor)-\(detail != nil ? "d" : "")\(settings.buildings3D ? "b" : "")"
         if let cached = cache[key], FileManager.default.fileExists(atPath: cached.path) { return cached }
 
         guard let assets = Bundle.main.resourceURL?.appendingPathComponent("MapAssets", isDirectory: true),
@@ -24,10 +26,24 @@ enum MapStyle {
               )
         else { return dark ? onlineDark : onlineLight }
 
-        let style = template
+        var style = template
             .replacingOccurrences(of: "{{PMTILES}}", with: trimmed(store.fileURL(pack, .map)))
             .replacingOccurrences(of: "{{GLYPHS}}", with: trimmed(assets.appendingPathComponent("fonts", isDirectory: true)))
             .replacingOccurrences(of: "{{SPRITES}}", with: trimmed(assets.appendingPathComponent("sprites", isDirectory: true)))
+
+        // 3D buildings and street detail (lanes, crosswalks, sidewalks, rail).
+        if detail != nil || settings.buildings3D,
+           let data = style.data(using: .utf8),
+           var json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        {
+            StreetDetailStyle.apply(to: &json, detailURL: detail.map(trimmed), dark: dark,
+                                    buildings: settings.buildings3D)
+            if let out = try? JSONSerialization.data(withJSONObject: json),
+               let text = String(data: out, encoding: .utf8)
+            {
+                style = text
+            }
+        }
 
         let out = store.mapsDir.appendingPathComponent("style-\(key).json")
         do {

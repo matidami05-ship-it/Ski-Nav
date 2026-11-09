@@ -45,6 +45,10 @@ final class AppSettings {
     var laneGuidance: Bool { didSet { defaults.set(laneGuidance, forKey: "laneGuidance") } }
     var streetView: Bool { didSet { defaults.set(streetView, forKey: "streetView") } }
     var junctionView: Bool { didSet { defaults.set(junctionView, forKey: "junctionView") } }
+    var buildings3D: Bool { didSet { defaults.set(buildings3D, forKey: "buildings3D") } }
+    var streetDetail: Bool { didSet { defaults.set(streetDetail, forKey: "streetDetail") } }
+    /// Free-driving map tilted in 3D and turning with you.
+    var map3D: Bool { didSet { defaults.set(map3D, forKey: "map3D") } }
     var travelMode: TravelMode { didSet { defaults.set(travelMode.rawValue, forKey: "travelMode") } }
     /// Save where the car is when CarPlay disconnects.
     var autoSaveParking: Bool { didSet { defaults.set(autoSaveParking, forKey: "autoSaveParking") } }
@@ -68,6 +72,9 @@ final class AppSettings {
             "streetView": true,
             "travelMode": TravelMode.driving.rawValue,
             "autoSaveParking": true,
+            "buildings3D": true,
+            "streetDetail": true,
+            "map3D": false,
         ])
         useMiles = defaults.bool(forKey: "useMiles")
         avoidTolls = defaults.bool(forKey: "avoidTolls")
@@ -86,6 +93,9 @@ final class AppSettings {
         streetView = defaults.bool(forKey: "streetView")
         travelMode = TravelMode(rawValue: defaults.string(forKey: "travelMode") ?? "") ?? .driving
         autoSaveParking = defaults.bool(forKey: "autoSaveParking")
+        buildings3D = defaults.bool(forKey: "buildings3D")
+        streetDetail = defaults.bool(forKey: "streetDetail")
+        map3D = defaults.bool(forKey: "map3D")
     }
 
     /// Anything that changes how routes are calculated.

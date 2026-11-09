@@ -26,6 +26,12 @@ struct SettingsView: View {
                     Picker("Appearance", selection: $settings.appearance) {
                         ForEach(MapAppearance.allCases) { Text($0.label).tag($0) }
                     }
+                    Toggle("3D map when driving", isOn: Binding(
+                        get: { settings.map3D },
+                        set: { if $0 != settings.map3D { model.toggle3D() } }
+                    ))
+                    Toggle("3D buildings", isOn: $settings.buildings3D)
+                    Toggle("Street detail", isOn: $settings.streetDetail)
                     Toggle("Show speed limit", isOn: $settings.showSpeedLimit)
                     Picker("Units", selection: $settings.useMiles) {
                         Text("Miles").tag(true)

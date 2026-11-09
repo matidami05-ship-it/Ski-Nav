@@ -14,6 +14,7 @@ struct DownloadsView: View {
                 Section {
                     ForEach(store.installedPacks) { pack in
                         installedRow(pack)
+                        detailRow(pack)
                     }
                 } header: {
                     Text("On this iPhone")
@@ -97,6 +98,47 @@ struct DownloadsView: View {
             Button("Use This Map", systemImage: "checkmark") { settings.activeRegionID = pack.id }
             Button("Pick Automatically", systemImage: "location") { settings.activeRegionID = nil }
             Button("Delete", systemImage: "trash", role: .destructive) { confirmDelete = pack }
+        }
+    }
+
+    /// Optional 3D street detail for an installed pack: lanes, crosswalks, sidewalks, rail.
+    @ViewBuilder
+    private func detailRow(_ pack: RegionPack) -> some View {
+        let offered = store.detailAvailable(pack.id)
+        let have = store.detailURL(pack) != nil
+        if offered != nil || have || store.detailProgress[pack.id] != nil {
+            HStack(spacing: 12) {
+                Image(systemName: "view.3d")
+                    .font(.title3)
+                    .foregroundStyle(have ? Color.green : Color.accentColor)
+                    .frame(width: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("3D street detail").font(.subheadline.weight(.semibold))
+                    Text(have ? "Lane markings, crosswalks, sidewalks, rail · \(Fmt.bytes(pack.files.detail?.size ?? 0))"
+                        : "Lane markings, crosswalks, sidewalks, rail · \(Fmt.bytes(offered?.size ?? 0))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if let progress = store.detailProgress[pack.id] {
+                    ProgressView(value: progress).frame(width: 60)
+                } else if offered != nil {
+                    Button {
+                        store.downloadDetail(pack.id)
+                    } label: {
+                        Image(systemName: "icloud.and.arrow.down").font(.title3)
+                    }
+                    .buttonStyle(.borderless)
+                } else if have {
+                    Image(systemName: "checkmark").foregroundStyle(.secondary)
+                }
+            }
+            .padding(.leading, 20)
+            .swipeActions {
+                if have {
+                    Button("Remove", role: .destructive) { store.deleteDetail(pack.id) }
+                }
+            }
         }
     }
 
