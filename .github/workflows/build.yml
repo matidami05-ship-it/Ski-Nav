@@ -21,6 +21,9 @@ jobs:
           sudo xcode-select -s "$XC/Contents/Developer"
           xcodebuild -version
 
+      - name: Disable SPM prebuilts (needed for MapLibre's Swift macros)
+        run: defaults write com.apple.dt.Xcode IDEPackageEnablePrebuilts NO
+
       - name: Install XcodeGen
         run: brew install xcodegen
 
