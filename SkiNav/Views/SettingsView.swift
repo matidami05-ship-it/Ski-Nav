@@ -92,26 +92,18 @@ struct SettingsView: View {
                             settings.voiceMuted = !on
                         }
                     ))
-                    VStack(alignment: .leading) {
-                        Text("Speaking speed")
-                        Slider(value: $settings.speechRate, in: 0.42 ... 0.62) {
-                            Text("Speaking speed")
-                        } minimumValueLabel: {
-                            Image(systemName: "tortoise.fill")
-                        } maximumValueLabel: {
-                            Image(systemName: "hare.fill")
-                        } onEditingChanged: { editing in
-                            if !editing {
-                                model.voice.rate = Float(settings.speechRate)
-                                model.voice.speak(AVSpeechUtterance(string: "In a quarter mile, turn right onto Main Street."))
-                            }
+                    NavigationLink {
+                        VoiceSettingsView(model: model)
+                    } label: {
+                        HStack {
+                            Label("Voice & Language", systemImage: "waveform")
+                            Spacer()
+                            Text("\(settings.guidanceLanguage.label) · \(settings.useAzureVoice ? "Natural" : "iPhone")")
+                                .foregroundStyle(.secondary)
                         }
                     }
-                    LabeledContent("Voice", value: VoiceSynthesizer.bestVoice()?.name ?? "Default")
                 } header: {
                     Text("Voice")
-                } footer: {
-                    Text("For a more natural voice, download an Enhanced or Premium English voice in iPhone Settings › Accessibility › Spoken Content › Voices. Ski Nav uses the best one you have.")
                 }
 
                 Section {

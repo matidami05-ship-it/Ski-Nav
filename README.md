@@ -12,6 +12,10 @@ on the phone from a downloaded pack, so it keeps working with no signal.
   highways / ferries, automatic rerouting when you miss a turn
 - **Turn-by-turn** (Ferrostar): lane-style banners, voice prompts using the best installed
   iOS voice, speed limit sign, trip progress and ETA, landscape layout
+- **Voice guidance in English or Polish** with street names and distances (Valhalla
+  narrative), US street names pronounced in English inside Polish sentences; natural
+  Microsoft neural voices (optional Azure key, route pre-recorded for offline) or the best
+  installed iPhone voice
 - **3D map**: tilted, heading-up view for free driving and navigation, extruded 3D
   buildings, and optional **street detail** (painted lane markings sized to each road's
   real lane count, zebra crosswalks, sidewalks, railroad tracks and crossbucks, traffic

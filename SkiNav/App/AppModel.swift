@@ -178,6 +178,7 @@ final class AppModel {
     ) -> BuiltCore {
         let annotation = AnnotationPublisher<ValhallaExtendedOSRMAnnotation>.valhallaExtendedOSRM()
         voice.rate = Float(settings.speechRate)
+        voice.config = voiceConfig(settings)
         let speech = SpokenInstructionObserver(synthesizer: voice, isMuted: settings.voiceMuted)
         let options = settings.routeOptions
         let mode = settings.travelMode
@@ -222,6 +223,40 @@ final class AppModel {
             )
         }
         return BuiltCore(core: core, annotation: annotation, mode: settings.useOnlineWhenAvailable ? .online : .unavailable)
+    }
+
+    static func voiceConfig(_ settings: AppSettings) -> VoiceSynthesizer.Config {
+        var c = VoiceSynthesizer.Config()
+        c.language = settings.guidanceLanguage.rawValue
+        c.englishStreetNames = settings.englishStreetNames
+        c.azure = settings.useAzureVoice
+        c.azureKey = settings.azureKey.trimmingCharacters(in: .whitespaces)
+        c.azureRegion = settings.azureRegion.trimmingCharacters(in: .whitespaces)
+        c.azureVoice = settings.azureVoice
+        return c
+    }
+
+    /// Point the voice at the current settings and the route's street names, and record the
+    /// route's instructions ahead of time.
+    func prepareVoice(for route: Route) {
+        voice.config = Self.voiceConfig(settings)
+        voice.rate = Float(settings.speechRate)
+        var names = Set<String>()
+        for step in route.steps {
+            if let name = step.roadName, !name.isEmpty { names.insert(name) }
+            for v in step.visualInstructions {
+                names.insert(v.primaryContent.text)
+                if let s = v.secondaryContent?.text { names.insert(s) }
+            }
+        }
+        for stop in stops { names.insert(stop.name) }
+        // Only things that look like English names (Latin letters, not a Polish phrase).
+        voice.streetNames = names.filter { n in
+            n.count > 2 && n.range(of: "[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]", options: .regularExpression) == nil
+                && !n.lowercased().hasPrefix("skręć") && !n.lowercased().hasPrefix("za ")
+        }.sorted()
+        let language = settings.guidanceLanguage.rawValue
+        voice.prefetch(route, extraPhrases: ["camera", "railroad", "traffic"].map { Phrases.text($0, language: language) })
     }
 
     /// Rebuild the routing engine when the offline pack or route preferences change.
@@ -297,7 +332,8 @@ final class AppModel {
             announcedAlerts.insert(next.id)
             UINotificationFeedbackGenerator().notificationOccurred(.warning)
             if !isMuted {
-                voice.speak(AVSpeechUtterance(string: next.spoken))
+                voice.speak(text: Phrases.text(next.isCamera ? "camera" : "railroad",
+                                               language: settings.guidanceLanguage.rawValue))
             }
         }
     }
@@ -313,7 +349,10 @@ final class AppModel {
             .sink { [weak self] _ in
                 // New route after a reroute: find its alerts.
                 guard let self, self.screen == .navigating else { return }
-                Task { @MainActor in self.updateRouteAlerts() }
+                Task { @MainActor in
+                    self.updateRouteAlerts()
+                    if let route = self.core.route { self.prepareVoice(for: route) }
+                }
             }
             .store(in: &coreCancellables)
         core.spokenInstructionObserver.$isMuted
@@ -687,6 +726,7 @@ final class AppModel {
             screen = .navigating
             announcedAlerts = []
             updateRouteAlerts()
+            prepareVoice(for: route)
             startTrafficUpdates()
             camera = navigationCamera
             UIApplication.shared.isIdleTimerDisabled = true

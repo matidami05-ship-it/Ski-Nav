@@ -35,6 +35,21 @@ enum MapMode: String, CaseIterable, Identifiable {
     }
 }
 
+/// Language for spoken and on-screen turn instructions.
+enum GuidanceLanguage: String, CaseIterable, Identifiable {
+    case english = "en-US"
+    case polish = "pl-PL"
+    var id: String { rawValue }
+    var label: String { self == .english ? "English" : "Polski" }
+}
+
+/// Where the voice comes from.
+enum VoiceEngine: String, CaseIterable, Identifiable {
+    case device, azure
+    var id: String { rawValue }
+    var label: String { self == .device ? "iPhone voice" : "Natural voice (Azure)" }
+}
+
 /// User preferences, saved in UserDefaults.
 @MainActor
 @Observable
@@ -58,6 +73,13 @@ final class AppSettings {
     var laneGuidance: Bool { didSet { defaults.set(laneGuidance, forKey: "laneGuidance") } }
     var streetView: Bool { didSet { defaults.set(streetView, forKey: "streetView") } }
     var junctionView: Bool { didSet { defaults.set(junctionView, forKey: "junctionView") } }
+    var guidanceLanguage: GuidanceLanguage { didSet { defaults.set(guidanceLanguage.rawValue, forKey: "guidanceLanguage") } }
+    var voiceEngine: VoiceEngine { didSet { defaults.set(voiceEngine.rawValue, forKey: "voiceEngine") } }
+    var azureKey: String { didSet { defaults.set(azureKey, forKey: "azureKey") } }
+    var azureRegion: String { didSet { defaults.set(azureRegion, forKey: "azureRegion") } }
+    var azureVoice: String { didSet { defaults.set(azureVoice, forKey: "azureVoice") } }
+    /// Say US street names with English pronunciation inside Polish instructions.
+    var englishStreetNames: Bool { didSet { defaults.set(englishStreetNames, forKey: "englishStreetNames") } }
     var mapMode: MapMode { didSet { defaults.set(mapMode.rawValue, forKey: "mapMode") } }
     /// Free key from developer.tomtom.com, for live traffic and satellite imagery.
     var tomtomKey: String { didSet { defaults.set(tomtomKey, forKey: "tomtomKey") } }
@@ -91,6 +113,12 @@ final class AppSettings {
             "travelMode": TravelMode.driving.rawValue,
             "autoSaveParking": true,
             "buildings3D": true,
+            "guidanceLanguage": GuidanceLanguage.english.rawValue,
+            "voiceEngine": VoiceEngine.device.rawValue,
+            "azureKey": "",
+            "azureRegion": "eastus",
+            "azureVoice": "pl-PL-ZofiaNeural",
+            "englishStreetNames": true,
             "mapMode": MapMode.explore.rawValue,
             "tomtomKey": "",
             "trafficNav": true,
@@ -115,6 +143,12 @@ final class AppSettings {
         travelMode = TravelMode(rawValue: defaults.string(forKey: "travelMode") ?? "") ?? .driving
         autoSaveParking = defaults.bool(forKey: "autoSaveParking")
         buildings3D = defaults.bool(forKey: "buildings3D")
+        guidanceLanguage = GuidanceLanguage(rawValue: defaults.string(forKey: "guidanceLanguage") ?? "") ?? .english
+        voiceEngine = VoiceEngine(rawValue: defaults.string(forKey: "voiceEngine") ?? "") ?? .device
+        azureKey = defaults.string(forKey: "azureKey") ?? ""
+        azureRegion = defaults.string(forKey: "azureRegion") ?? "eastus"
+        azureVoice = defaults.string(forKey: "azureVoice") ?? "pl-PL-ZofiaNeural"
+        englishStreetNames = defaults.bool(forKey: "englishStreetNames")
         mapMode = MapMode(rawValue: defaults.string(forKey: "mapMode") ?? "") ?? .explore
         tomtomKey = defaults.string(forKey: "tomtomKey") ?? ""
         trafficWhileNavigating = defaults.bool(forKey: "trafficNav")
@@ -122,17 +156,22 @@ final class AppSettings {
         map3D = defaults.bool(forKey: "map3D")
     }
 
+    var useAzureVoice: Bool {
+        voiceEngine == .azure && !azureKey.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
     var hasTrafficKey: Bool { !tomtomKey.trimmingCharacters(in: .whitespaces).isEmpty }
 
     /// Anything that changes how routes are calculated.
     var routingKey: String {
-        "\(travelMode.rawValue)-\(useMiles)-\(avoidTolls)-\(avoidHighways)-\(avoidFerries)"
+        "\(guidanceLanguage.rawValue)-\(travelMode.rawValue)-\(useMiles)-\(avoidTolls)-\(avoidHighways)-\(avoidFerries)"
     }
 
     /// Valhalla request options.
     var routeOptions: [String: Any] {
         [
             "units": useMiles ? "miles" : "kilometers",
+            "language": guidanceLanguage.rawValue,
             "alternates": 2,
             "costing_options": [
                 "auto": [
