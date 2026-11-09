@@ -38,13 +38,18 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
+      - name: Resolve Swift packages
+        run: |
+          xcodebuild -resolvePackageDependencies -project SkiNav.xcodeproj -scheme SkiNav \
+            -derivedDataPath build -skipPackagePluginValidation -skipMacroValidation
+
       - name: Build for Simulator (compile check)
         run: |
           xcodebuild -project SkiNav.xcodeproj -scheme SkiNav \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
             -configuration Debug -derivedDataPath build \
             -skipPackagePluginValidation -skipMacroValidation \
-            build CODE_SIGNING_ALLOWED=NO 2>&1 | tee sim.log | grep -E "error:|warning: unre|BUILD (SUCCEEDED|FAILED)" ; exit ${PIPESTATUS[0]}
+            build CODE_SIGNING_ALLOWED=NO 2>&1 | tee sim.log | grep -E -A3 "error:|BUILD (SUCCEEDED|FAILED)" ; exit ${PIPESTATUS[0]}
 
       - name: Build unsigned IPA
         run: |
