@@ -61,17 +61,16 @@ struct MapScreen: View {
             onTapExit: { model.stopNavigation() }
         ) {
             for (index, route) in alternates {
-                RouteStyleLayer(
+                RouteLine(
                     polyline: MLNPolylineFeature(coordinates: route.geometry.map(\.clLocationCoordinate2D)),
                     identifier: "alt-route-\(index)",
-                    style: AlternateRouteStyle()
+                    kind: .alternate
                 )
             }
             if let preview {
-                RouteStyleLayer(
+                RouteLine(
                     polyline: MLNPolylineFeature(coordinates: preview.geometry.map(\.clLocationCoordinate2D)),
-                    identifier: "preview-route",
-                    style: ActiveRouteStyle()
+                    identifier: "preview-route"
                 )
             }
             if !crossings.isEmpty {
@@ -134,6 +133,21 @@ struct MapScreen: View {
                     .color(.systemRed)
                     .strokeWidth(3)
                     .strokeColor(.white)
+            }
+        }
+        .navigationMapViewRouteOverlay { state in
+            // Wide blue route ahead, gray behind you.
+            if let state {
+                let parts = RouteLine.split(state.routeGeometry,
+                                            at: state.preferredUserLocation?.clLocation.coordinate)
+                if parts.travelled.count > 1 {
+                    RouteLine(polyline: MLNPolylineFeature(coordinates: parts.travelled),
+                              identifier: "nav-travelled", kind: .travelled)
+                }
+                if parts.remaining.count > 1 {
+                    RouteLine(polyline: MLNPolylineFeature(coordinates: parts.remaining),
+                              identifier: "nav-remaining")
+                }
             }
         }
         .unsafeMapViewControllerModifier { controller in
