@@ -24,7 +24,7 @@ enum MapStyle {
         let buildings = settings.buildings3D && pack != nil
 
         let cacheKey = [
-            pack.map { "\($0.id)-\($0.version)" } ?? "online", flavor, "v3",
+            pack.map { "\($0.id)-\($0.version)" } ?? "online", flavor, "v4",
             detail != nil ? "d" : "", buildings ? "b" : "", traffic ? "t" : "", satellite ? "s" : "",
             settings.trafficFlow ? "f" : "", settings.trafficIncidents ? "i" : "",
             String(key.utf8.reduce(UInt32(5381)) { ($0 &* 33) &+ UInt32($1) } % 100_000),
@@ -40,6 +40,7 @@ enum MapStyle {
             if pack == nil, dark {
                 StyleTweaks.nightOnline(&json) // offline styles already use the night palette
             }
+            LabelStyle.apply(&json, dark: dark, satellite: satellite)
             if detail != nil || buildings {
                 StreetDetailStyle.apply(to: &json, detailURL: detail.map(trimmed), dark: dark, buildings: buildings)
             }

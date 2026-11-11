@@ -97,13 +97,26 @@ struct VoiceSettingsView: View {
                     Link("Open Azure Portal", destination: URL(string: "https://portal.azure.com/#create/Microsoft.CognitiveServicesSpeechServices")!)
                 }
             } else {
-                Section("iPhone voice") {
-                    LabeledContent("Using", value: deviceVoice.0)
+                Section {
+                    NavigationLink {
+                        DeviceVoicePicker(language: language, sampleKey: "sample")
+                    } label: {
+                        LabeledContent("Voice", value: deviceVoice.0)
+                    }
+                    if settings.guidanceLanguage == .polish, settings.englishStreetNames {
+                        NavigationLink {
+                            DeviceVoicePicker(language: "en-US", sampleKey: "streetSample")
+                        } label: {
+                            LabeledContent("Street names voice", value: VoiceSynthesizer.describeBestVoice(language: "en-US").name)
+                        }
+                    }
                     if !deviceVoice.1 {
-                        Label("Download an Enhanced voice for a much more natural sound.", systemImage: "arrow.down.circle")
+                        Label("Download an Enhanced or Premium voice for a much more natural sound.", systemImage: "arrow.down.circle")
                             .font(.footnote)
                             .foregroundStyle(.orange)
                     }
+                } header: {
+                    Text("iPhone voice")
                 }
             }
 
@@ -142,5 +155,128 @@ struct VoiceSettingsView: View {
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .voicePrompt, options: [.duckOthers])
         try? AVAudioSession.sharedInstance().setActive(true)
         voice.speak(text: Phrases.text("sample", language: language))
+    }
+}
+
+/// Every iPhone voice installed for a language, each with a play button to try it.
+struct DeviceVoicePicker: View {
+    let language: String
+    let sampleKey: String
+    @State private var chosen: String?
+    @State private var voices: [AVSpeechSynthesisVoice] = []
+    @State private var playing: String?
+    @State private var tester = VoiceTester()
+
+    var body: some View {
+        List {
+            Section {
+                row(id: nil, name: "Automatic", detail: "Best installed voice")
+            }
+            ForEach(groups.indices, id: \.self) { i in
+                Section(groups[i].0) {
+                    ForEach(groups[i].1, id: \.identifier) { v in
+                        row(id: v.identifier, name: v.name, detail: regionName(v.language), voice: v)
+                    }
+                }
+            }
+            Section {
+                Text("More voices: iPhone Settings › Accessibility › Spoken Content › Voices › \(language.hasPrefix("pl") ? "Polish" : "English"). Premium and Enhanced voices sound the most natural; each is a free download. Come back here after downloading.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Button("Open Settings") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                }
+            }
+        }
+        .navigationTitle(language.hasPrefix("pl") ? "Polish Voices" : "English Voices")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear(perform: reload)
+        .onReceive(NotificationCenter.default.publisher(for: AVSpeechSynthesizer.availableVoicesDidChangeNotification)) { _ in reload() }
+        .onDisappear { tester.stop() }
+    }
+
+    private var groups: [(String, [AVSpeechSynthesisVoice])] {
+        let order = ["Premium", "Enhanced", "Compact", "Fun"]
+        let byLabel = Dictionary(grouping: voices, by: VoiceSynthesizer.qualityLabel)
+        return order.compactMap { label in byLabel[label].map { (label, $0) } }
+    }
+
+    private func reload() {
+        voices = VoiceSynthesizer.installedVoices(language: language)
+        chosen = VoiceSynthesizer.chosenVoiceID(language: language)
+    }
+
+    private func regionName(_ code: String) -> String {
+        Locale.current.localizedString(forIdentifier: code) ?? code
+    }
+
+    private func row(id: String?, name: String, detail: String, voice: AVSpeechSynthesisVoice? = nil) -> some View {
+        let key = id ?? "auto"
+        return HStack(spacing: 12) {
+            Button {
+                if playing == key { tester.stop(); playing = nil; return }
+                playing = key
+                let v = voice ?? VoiceSynthesizer.bestVoice(language: language)
+                tester.play(Phrases.text(sampleKey, language: language), voice: v) { playing = nil }
+            } label: {
+                Image(systemName: playing == key ? "stop.circle.fill" : "play.circle.fill")
+                    .font(.title2)
+                    .foregroundStyle(.tint)
+            }
+            .buttonStyle(.borderless)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name)
+                Text(detail).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            if chosen == id {
+                Image(systemName: "checkmark").foregroundStyle(.tint).fontWeight(.semibold)
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            chosen = id
+            VoiceSynthesizer.setChosenVoice(id, language: language)
+        }
+    }
+}
+
+/// Plays one sample sentence with a given voice.
+@MainActor
+final class VoiceTester: NSObject, AVSpeechSynthesizerDelegate {
+    private let synth = AVSpeechSynthesizer()
+    private var done: (() -> Void)?
+
+    override init() {
+        super.init()
+        synth.delegate = self
+    }
+
+    func play(_ text: String, voice: AVSpeechSynthesisVoice?, done: @escaping () -> Void) {
+        synth.stopSpeaking(at: .immediate)
+        self.done = done
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .voicePrompt, options: [.duckOthers])
+        try? AVAudioSession.sharedInstance().setActive(true)
+        let u = AVSpeechUtterance(string: text)
+        u.voice = voice
+        u.rate = Float(AppSettings.shared.speechRate)
+        u.prefersAssistiveTechnologySettings = false
+        synth.speak(u)
+    }
+
+    func stop() {
+        synth.stopSpeaking(at: .immediate)
+    }
+
+    nonisolated func speechSynthesizer(_ s: AVSpeechSynthesizer, didFinish _: AVSpeechUtterance) { finish() }
+    nonisolated func speechSynthesizer(_ s: AVSpeechSynthesizer, didCancel _: AVSpeechUtterance) { finish() }
+
+    private nonisolated func finish() {
+        Task { @MainActor in
+            if synth.isSpeaking { return } // a new sample already started
+            done?()
+            done = nil
+        }
     }
 }

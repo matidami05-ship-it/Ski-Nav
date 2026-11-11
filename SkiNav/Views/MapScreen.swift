@@ -1,4 +1,5 @@
 import AudioToolbox
+import CoreLocation
 import FerrostarCore
 import FerrostarCoreFFI
 import FerrostarMapLibreUI
@@ -153,6 +154,7 @@ struct MapScreen: View {
         }
         .unsafeMapViewControllerModifier { controller in
             controller.mapView.showsUserLocation = true
+            StartupCamera.seed(controller.mapView, at: model.userLocation?.coordinate, map3D: model.settings.map3D)
             // Icons used by the 3D street detail layers.
             if let style = controller.mapView.style {
                 for (name, image) in StreetDetailStyle.images.merging(TrafficStyle.images, uniquingKeysWith: { a, _ in a })
@@ -431,5 +433,30 @@ struct SpeedBubble: View {
             }
             .accessibilityLabel("Speed \(shown) \(miles ? "miles" : "kilometers") per hour\(speeding ? ", over the limit" : "")")
         }
+    }
+}
+
+
+/// The map view starts at 0°, 0° and then flies across the globe to the user once their
+/// position comes in. Jump straight to the last known position instead (no animation),
+/// keeping the follow mode so the camera still tracks the car from there.
+@MainActor
+enum StartupCamera {
+    private static var done = false
+
+    static func seed(_ mapView: MLNMapView, at coordinate: CLLocationCoordinate2D?, map3D: Bool) {
+        guard !done, let coordinate else { return }
+        done = true
+        let center = mapView.centerCoordinate
+        // Only if it's still at the default spot (it may already be on the user).
+        guard abs(center.latitude) < 1, abs(center.longitude) < 1 else { return }
+        let mode = mapView.userTrackingMode
+        mapView.setCenter(coordinate, zoomLevel: map3D ? 17.2 : 14, animated: false)
+        if map3D {
+            let camera = mapView.camera
+            camera.pitch = 58
+            mapView.setCamera(camera, animated: false)
+        }
+        if mode != .none { mapView.setUserTrackingMode(mode, animated: false, completionHandler: nil) }
     }
 }

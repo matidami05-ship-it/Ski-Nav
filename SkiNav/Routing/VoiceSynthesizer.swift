@@ -130,6 +130,11 @@ final class VoiceSynthesizer: NSObject, SpeechSynthesizer, AVSpeechSynthesizerDe
     static func bestVoice(language: String = Locale.preferredLanguages.first ?? "en-US") -> AVSpeechSynthesisVoice? {
         if let cached = voiceCache[language] { return cached }
         let prefix = String(language.prefix(2))
+        // A voice the user picked in Settings wins, as long as it's still installed.
+        if let id = chosenVoiceID(language: language), let chosen = AVSpeechSynthesisVoice(identifier: id) {
+            voiceCache[language] = chosen
+            return chosen
+        }
         let voices = AVSpeechSynthesisVoice.speechVoices().filter { $0.language.hasPrefix(prefix) }
         func score(_ v: AVSpeechSynthesisVoice) -> Int {
             var s = 0
@@ -149,6 +154,51 @@ final class VoiceSynthesizer: NSObject, SpeechSynthesizer, AVSpeechSynthesizerDe
     }
 
     static func resetVoiceCache() { voiceCache = [:] }
+
+    // MARK: Picking a voice
+
+    private static let chosenKey = "deviceVoices"
+
+    /// The voice picked for a language ("en", "pl"…), or nil for automatic.
+    static func chosenVoiceID(language: String) -> String? {
+        (UserDefaults.standard.dictionary(forKey: chosenKey) as? [String: String])?[String(language.prefix(2))]
+    }
+
+    static func setChosenVoice(_ id: String?, language: String) {
+        var all = UserDefaults.standard.dictionary(forKey: chosenKey) as? [String: String] ?? [:]
+        all[String(language.prefix(2))] = id
+        UserDefaults.standard.set(all, forKey: chosenKey)
+        resetVoiceCache()
+    }
+
+    /// Every installed voice for a language: best quality first, then the exact region, then by name.
+    static func installedVoices(language: String) -> [AVSpeechSynthesisVoice] {
+        let prefix = String(language.prefix(2))
+        func rank(_ v: AVSpeechSynthesisVoice) -> Int {
+            if v.voiceTraits.contains(.isNoveltyVoice) { return 0 }
+            switch v.quality {
+            case .premium: return 3
+            case .enhanced: return 2
+            default: return 1
+            }
+        }
+        return AVSpeechSynthesisVoice.speechVoices()
+            .filter { $0.language.hasPrefix(prefix) }
+            .sorted {
+                if rank($0) != rank($1) { return rank($0) > rank($1) }
+                if ($0.language == language) != ($1.language == language) { return $0.language == language }
+                return $0.name < $1.name
+            }
+    }
+
+    static func qualityLabel(_ v: AVSpeechSynthesisVoice) -> String {
+        if v.voiceTraits.contains(.isNoveltyVoice) { return "Fun" }
+        switch v.quality {
+        case .premium: return "Premium"
+        case .enhanced: return "Enhanced"
+        default: return "Compact"
+        }
+    }
 
     /// "Zosia (Enhanced)" — what the iPhone will use.
     static func describeBestVoice(language: String) -> (name: String, natural: Bool) {
@@ -170,6 +220,7 @@ enum Phrases {
         case "sample": return polish
             ? "Za pół mili skręć w prawo w Main Street. Następnie trzymaj się lewej strony."
             : "In half a mile, turn right onto Main Street. Then keep left."
+        case "streetSample": return "Main Street. Lake Geneva Boulevard. Wells Street."
         default: return key
         }
     }

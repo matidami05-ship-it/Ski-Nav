@@ -105,26 +105,34 @@ final class AppModel {
     @ObservationIgnored private var alertIndexKey = ""
     @ObservationIgnored private var announcedAlerts = Set<String>()
     @ObservationIgnored private var alertTask: Task<Void, Never>?
+    @ObservationIgnored private var hasLiveFix = false
 
     private init() {
         let location = CoreLocationProvider(activityType: .automotiveNavigation, allowBackgroundLocationUpdates: true)
         let voice = VoiceSynthesizer()
         locationProvider = location
         self.voice = voice
+        // Start from the last known position and its offline map, so the very first frame
+        // already shows the right place and style (no fly-in from the ocean, no style swap).
+        let lastKnown = CLLocationManager().location
+        let startPack = RegionStore.shared.activePack(near: lastKnown?.coordinate)
         let built = Self.makeCore(
-            pack: nil, settings: AppSettings.shared, regions: RegionStore.shared,
+            pack: startPack, settings: AppSettings.shared, regions: RegionStore.shared,
             locationProvider: location, voice: voice
         )
         core = built.core
         annotation = built.annotation
         routingMode = built.mode
         isMuted = AppSettings.shared.voiceMuted
+        userLocation = lastKnown
+        activePack = startPack
 
         locationProvider.$lastLocation
             .receive(on: DispatchQueue.main)
             .sink { [weak self] location in
                 guard let self, let location else { return }
-                let first = self.userLocation == nil
+                let first = !self.hasLiveFix
+                self.hasLiveFix = true
                 self.userLocation = location.clLocation
                 if first { self.refreshRouting() }
             }
